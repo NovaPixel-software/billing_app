@@ -1,0 +1,10 @@
+# live data: accounts, password hashes, sessions, invoices
+data/
+*.migrated
+# backups, logs, temp files
+*.bak
+*.bak_*
+*.log
+*.tmp
+# large demo recordings
+demo/*.mp4

@@ -1,0 +1,236 @@
+{
+  "settings": {
+    "name": "Sri Lakshmi Caterers",
+    "address": "No 12, Anna Salai\nTeynampet\nChennai - 600018",
+    "phone": "9876543210",
+    "gst": "33ABCPL1234F1Z5",
+    "pan": "ABCPL1234F",
+    "logo": "",
+    "themeColor": "#3b82f6",
+    "prefix": "SLC.",
+    "nextNo": 103,
+    "gstRate": 5,
+    "dueDays": 10,
+    "bankAccount": "123456789012",
+    "ifsc": "SBIN0001234",
+    "bankName": "State Bank of India",
+    "accountName": "Sri Lakshmi Caterers",
+    "terms": "Payment should be made within 10 days from the date of invoice only to the account below."
+  },
+  "customers": [
+    {
+      "id": "c1",
+      "name": "MK Enterprise",
+      "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+      "gst": "33JRCPS6156P1ZY"
+    },
+    {
+      "id": "c2",
+      "name": "Global Tech Park Canteen",
+      "address": "Tech Park Road, Perungudi,\nChennai – 600096 TN India",
+      "gst": "33AABCG5678B1Z2"
+    }
+  ],
+  "items": [
+    {
+      "id": "i1",
+      "name": "Channa samosa",
+      "details": "",
+      "rate": 35
+    },
+    {
+      "id": "i2",
+      "name": "Pani puri",
+      "details": "",
+      "rate": 47
+    },
+    {
+      "id": "i3",
+      "name": "Peanut salad",
+      "details": "",
+      "rate": 52
+    },
+    {
+      "id": "i4",
+      "name": "Breakfast combo",
+      "details": "",
+      "rate": 280
+    },
+    {
+      "id": "i5",
+      "name": "Veg burger",
+      "details": "",
+      "rate": 60
+    },
+    {
+      "id": "i6",
+      "name": "Fruit salad",
+      "details": "",
+      "rate": 60
+    },
+    {
+      "id": "i7",
+      "name": "Veg masala sandwich",
+      "details": "",
+      "rate": 42
+    },
+    {
+      "id": "i8",
+      "name": "Mushroom samosa",
+      "details": "",
+      "rate": 47
+    },
+    {
+      "id": "i9",
+      "name": "Gobi pakora",
+      "details": "",
+      "rate": 60
+    },
+    {
+      "id": "i10",
+      "name": "Medu vada (2) & Bonda (2)",
+      "details": "",
+      "rate": 52
+    },
+    {
+      "id": "i11",
+      "name": "Panneer puff",
+      "details": "",
+      "rate": 60
+    },
+    {
+      "id": "i12",
+      "name": "Sambar vada",
+      "details": "",
+      "rate": 60
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv101",
+      "no": "SLC.101",
+      "date": "2026-09-30",
+      "customerId": "c1",
+      "billTo": {
+        "name": "MK Enterprise",
+        "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+        "gst": "33JRCPS6156P1ZY"
+      },
+      "shipTo": {
+        "name": "MK Enterprise",
+        "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+        "gst": "33JRCPS6156P1ZY"
+      },
+      "lines": [
+        {
+          "date": "2026-09-01",
+          "item": "Channa samosa",
+          "count": 40,
+          "cost": 35
+        },
+        {
+          "date": "2026-09-03",
+          "item": "Pani puri",
+          "count": 55,
+          "cost": 47
+        },
+        {
+          "date": "2026-09-04",
+          "item": "Breakfast combo",
+          "count": 12,
+          "cost": 280
+        },
+        {
+          "date": "2026-09-08",
+          "item": "Veg burger",
+          "count": 48,
+          "cost": 60
+        },
+        {
+          "date": "2026-09-10",
+          "item": "Fruit salad",
+          "count": 50,
+          "cost": 60
+        },
+        {
+          "date": "2026-09-15",
+          "item": "Gobi pakora",
+          "count": 52,
+          "cost": 60
+        }
+      ],
+      "gstRate": 5,
+      "status": "paid",
+      "paidDate": "2026-10-06"
+    },
+    {
+      "id": "inv102",
+      "no": "SLC.102",
+      "date": "2026-10-31",
+      "customerId": "c1",
+      "billTo": {
+        "name": "MK Enterprise",
+        "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+        "gst": "33JRCPS6156P1ZY"
+      },
+      "shipTo": {
+        "name": "MK Enterprise",
+        "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+        "gst": "33JRCPS6156P1ZY"
+      },
+      "lines": [
+        {
+          "date": "2026-10-01",
+          "item": "Channa samosa",
+          "count": 46,
+          "cost": 35
+        },
+        {
+          "date": "2026-10-05",
+          "item": "Pani puri",
+          "count": 57,
+          "cost": 47
+        },
+        {
+          "date": "2026-10-06",
+          "item": "Peanut salad",
+          "count": 40,
+          "cost": 52
+        },
+        {
+          "date": "2026-10-07",
+          "item": "Veg burger",
+          "count": 45,
+          "cost": 60
+        },
+        {
+          "date": "2026-10-12",
+          "item": "Veg masala sandwich",
+          "count": 54,
+          "cost": 42
+        },
+        {
+          "date": "2026-10-14",
+          "item": "Gobi pakora",
+          "count": 58,
+          "cost": 60
+        },
+        {
+          "date": "2026-10-20",
+          "item": "Panneer puff",
+          "count": 56,
+          "cost": 60
+        },
+        {
+          "date": "2026-10-26",
+          "item": "Sambar vada",
+          "count": 55,
+          "cost": 60
+        }
+      ],
+      "gstRate": 5,
+      "status": "unpaid",
+      "paidDate": ""
+    }
+  ]
+}
