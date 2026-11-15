@@ -646,13 +646,13 @@ function viewInvoice(id) {
         <div class="words"><span style="${lbl}">Amount in words</span><b>${rupeesInWords(c.rounded)}</b></div>
         <div class="bank"><span style="${lbl}">Bank details</span>
           <table><tr><td>Account name</td><td><b>${esc(s.accountName)}</b></td></tr><tr><td>Account no.</td><td><b>${esc(s.bankAccount)}</b></td></tr><tr><td>IFSC</td><td><b>${esc(s.ifsc)}</b></td></tr><tr><td>Bank</td><td>${esc(s.bankName)}</td></tr></table></div>
+        ${s.terms ? `<div class="terms side"><b>Terms &amp; conditions:</b> ${esc(s.terms)}</div>` : ''}
       </div>
       <div>
         <table class="tot">${tot}</table>
       </div>
     </div>
-    <div class="terms"><b>Terms &amp; conditions:</b> ${esc(s.terms)}</div>
-    <div class="thanks">Thank you for your business!</div>
+    <div class="thanks">Thank you for your business!<small class="cg">This is a computer-generated invoice and does not require a signature or seal.</small></div>
   </div>`;
   fitPaper();
   const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
