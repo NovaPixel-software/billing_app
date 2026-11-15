@@ -50,7 +50,7 @@ const saveSessions = () => writeJson('sessions.json', sessions);
 function seedWorkspace(companyName) {
   return {
     settings: {
-      name: companyName, address: '', phone: '', gst: '', pan: '', logo: '', themeColor: '#3b82f6',
+      name: companyName, address: '', phone: '', gst: '', pan: '', logo: '', themeColor: '#4a25d0',
       prefix: 'INV-', nextNo: 1, gstRate: 18, dueDays: 10, lineDates: false,
       bankAccount: '', ifsc: '', bankName: '', accountName: companyName,
       terms: 'Payment should be made within 10 days from the date of invoice only to the account below.',
@@ -71,7 +71,7 @@ if (!users) {
     fs.renameSync(old, old + '.migrated');
     ws.settings.logo = ws.settings.logo || 'logo.png';
   } else ws = seedWorkspace('My Company');
-  ws.settings.themeColor = ws.settings.themeColor || '#3b82f6';
+  ws.settings.themeColor = ws.settings.themeColor || '#4a25d0';
   writeJson('ws_' + id + '.json', ws);
   console.log('First run: admin account created -> username: admin  password: admin123 (must be changed at first login)');
 }
@@ -117,8 +117,15 @@ function sessionUser(req) {
 }
 const publicUser = u => ({ id: u.id, username: u.username, name: u.name, role: u.role, active: u.active, mustChange: !!u.mustChange });
 function calcTotal(inv) {
-  const sub = (inv.lines || []).reduce((s, l) => s + (+l.count || 0) * (+l.cost || 0), 0);
-  return Math.round(sub * (1 + (+inv.gstRate || 0) / 100));
+  // same maths as the browser: line discount, whole-bill discount, then GST (own rate of the line, else the invoice rate)
+  const p = x => Math.min(100, Math.max(0, +x || 0));
+  let total = 0;
+  (inv.lines || []).forEach(l => {
+    const taxable = (+l.count || 0) * (+l.cost || 0) * (1 - p(l.disc) / 100) * (1 - p(inv.discount) / 100);
+    const rate = (l.gst !== undefined && l.gst !== null && l.gst !== '') ? Math.max(0, +l.gst || 0) : (+inv.gstRate || 0);
+    total += taxable * (1 + rate / 100);
+  });
+  return Math.round(total);
 }
 function wsStats(id) {
   const ws = readJson('ws_' + id + '.json', null);

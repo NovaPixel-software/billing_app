@@ -13,12 +13,37 @@ const fmtDate = d => { if (!d) return ''; const [y, m, dd] = d.split('-'); retur
 const monthLabel = k => { const [y, m] = k.split('-'); return `${MON[+m - 1]} ${y}`; };
 const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
 
-function calc(inv) {
-  const sub = inv.lines.reduce((s, l) => s + (+l.count || 0) * (+l.cost || 0), 0);
-  const gst = sub * (+inv.gstRate || 0) / 100;
-  const total = sub + gst;
-  return { sub, gst, cgst: gst / 2, sgst: gst / 2, total, rounded: Math.round(total) };
+// Tax + discount maths. Old invoices (no per-line GST, no discounts, no tax type) work out exactly as before.
+const pct = v => Math.min(100, Math.max(0, +v || 0));
+const hasOwnGst = l => l.gst !== undefined && l.gst !== null && l.gst !== '';
+const num = v => String(+(+v || 0).toFixed(2)); // 5 -> "5", 2.5 -> "2.5"
+function lineCalc(inv, l) {
+  const gross = (+l.count || 0) * (+l.cost || 0);
+  const lineDisc = gross * pct(l.disc) / 100;
+  const amount = gross - lineDisc; // shown in the Amount column
+  const invDisc = amount * pct(inv.discount) / 100; // discount on the whole bill, spread over every line
+  const taxable = amount - invDisc;
+  const rate = hasOwnGst(l) ? Math.max(0, +l.gst || 0) : (+inv.gstRate || 0);
+  return { gross, lineDisc, amount, invDisc, taxable, rate, tax: taxable * rate / 100 };
 }
+function calc(inv) {
+  let gross = 0, lineDisc = 0, amount = 0, invDisc = 0, sub = 0, gst = 0; const by = {};
+  inv.lines.forEach(l => {
+    const c = lineCalc(inv, l);
+    gross += c.gross; lineDisc += c.lineDisc; amount += c.amount; invDisc += c.invDisc; sub += c.taxable; gst += c.tax;
+    const b = by[c.rate] || (by[c.rate] = { rate: c.rate, taxable: 0, tax: 0 }); b.taxable += c.taxable; b.tax += c.tax;
+  });
+  const inter = inv.taxType === 'inter', total = sub + gst;
+  const all = Object.values(by).sort((a, b) => a.rate - b.rate), taxed = all.filter(b => b.rate > 0);
+  return {
+    gross, lineDisc, amount, invDisc, sub, gst, inter, igst: inter ? gst : 0, cgst: inter ? 0 : gst / 2, sgst: inter ? 0 : gst / 2,
+    rates: taxed.length ? taxed : all.slice(0, 1), mixed: all.length > 1, total, rounded: Math.round(total),
+  };
+}
+const UNITS = ['pcs', 'nos', 'kg', 'g', 'ltr', 'ml', 'box', 'pack', 'dozen', 'set', 'pair', 'mtr', 'sq.ft', 'hrs', 'days', 'month', 'job'];
+const colOn = k => !db || !db.settings.cols || db.settings.cols[k] !== false; // optional invoice columns: hsn, unit, itemGst, disc
+const stateOf = g => /^\d{2}/.test(String(g || '').trim()) ? String(g).trim().slice(0, 2) : ''; // first two digits of a GSTIN = state code
+const ONE_PAGE_LINES = 25; // an invoice with up to this many lines always prints on a single A4 page
 const isOverdue = inv => inv.status !== 'paid' && addDays(inv.date, +db.settings.dueDays || 10) < today();
 const statusOf = inv => inv.status === 'paid' ? 'paid' : isOverdue(inv) ? 'overdue' : 'unpaid';
 
@@ -286,11 +311,21 @@ function editor(id) {
   const existing = id && db.invoices.find(i => i.id === id);
   const s = db.settings;
   const blank = { name: '', address: '', gst: '' };
+  const newLine = d => ({ date: d || today(), item: '', hsn: '', count: 1, unit: '', cost: 0, disc: '', gst: '' });
   const inv = existing ? JSON.parse(JSON.stringify(existing)) : {
     id: uid('inv'), no: s.prefix + s.nextNo, date: today(), customerId: '', billTo: { ...blank }, shipTo: { ...blank },
-    lines: [{ date: today(), item: '', count: 1, cost: 0 }], gstRate: s.gstRate, status: 'unpaid', paidDate: '',
+    lines: [newLine()], gstRate: s.gstRate, taxType: 'intra', discount: 0, status: 'unpaid', paidDate: '',
   };
+  if (!inv.taxType) inv.taxType = 'intra';
   let sameShip = JSON.stringify(inv.billTo) === JSON.stringify(inv.shipTo);
+  // a column shows when it is switched on in Settings, or when this invoice already uses it
+  const LD = lineDates();
+  const H = colOn('hsn') || inv.lines.some(l => l.hsn), U = colOn('unit') || inv.lines.some(l => l.unit);
+  const G = colOn('itemGst') || inv.lines.some(hasOwnGst), D = colOn('disc') || inv.lines.some(l => +l.disc) || +inv.discount > 0;
+  // other state than ours -> IGST, same state -> CGST + SGST (only when both GST numbers are known)
+  const autoTax = () => { const a = stateOf(s.gst), b = stateOf(inv.billTo.gst); if (a && b) inv.taxType = a === b ? 'intra' : 'inter'; };
+  const applyItem = (l, it) => { l.cost = it.rate; l.hsn = it.hsn || ''; l.unit = it.unit || ''; l.gst = hasOwnGst(it) ? it.gst : ''; };
+  const fillRow = (tr, l) => ['cost', 'hsn', 'unit', 'gst'].forEach(f => { const e = tr.querySelector(`[data-l$=".${f}"]`); if (e) e.value = l[f] ?? ''; });
 
   const party = (k, title) => `<div class="card" style="flex:1;min-width:260px"><h2>${title}</h2>
     <div class="field"><label>Name</label><input data-p="${k}.name" value="${esc(inv[k].name)}"></div>
@@ -303,43 +338,69 @@ function editor(id) {
       <div class="field"><label>Invoice No.</label><input id="no" value="${esc(inv.no)}"></div>
       <div class="field"><label>Date</label><input id="date" type="date" value="${inv.date}"></div>
       <div class="field"><label>Customer (autofill)</label><button class="sel" id="cust" type="button"><span>${esc((db.customers.find(c => c.id === inv.customerId) || {}).name || '— choose customer —')}</span></button></div>
-      <div class="field"><label>GST % (total)</label><input id="gstRate" type="number" step="0.01" value="${inv.gstRate}"></div></div></div>
+      <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}"></div>
+      <div class="field"><label>Tax type</label><select id="taxType"><option value="intra">CGST + SGST (same state)</option><option value="inter">IGST (other state)</option></select></div></div></div>
     <div class="row" style="align-items:stretch">${party('billTo', 'Bill To')}${sameShip ? '' : party('shipTo', 'Ship To')}</div>
     <label style="margin-bottom:12px"><input type="checkbox" id="same" ${sameShip ? 'checked' : ''} style="width:auto"> Ship To same as Bill To</label>
     <div class="card">
-      <table class="stack lines"><tr>${lineDates() ? '<th style="width:130px">Date</th>' : ''}<th>Item</th><th class="n" style="width:90px">Qty</th><th class="n" style="width:110px">Rate (₹)</th><th class="n" style="width:120px">Total</th><th style="width:40px"></th></tr>
-      ${inv.lines.map((l, i) => `<tr>${lineDates() ? `<td><input type="date" data-l="${i}.date" value="${l.date}"></td>` : ''}
-        <td><input class="itemin" autocomplete="off" placeholder="Type or pick an item" data-l="${i}.item" value="${esc(l.item)}"></td>
-        <td><input type="number" class="n" data-l="${i}.count" value="${l.count}"></td>
-        <td><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}"></td>
-        <td class="n" id="lt${i}">${money((+l.count || 0) * (+l.cost || 0))}</td>
-        <td><button class="btn sm danger" data-del="${i}">✕</button></td></tr>`).join('')}</table>
-      <div style="margin:10px 0"><button class="btn" id="add">+ Add line</button></div>
+      <datalist id="units">${UNITS.map(u => `<option value="${u}"></option>`).join('')}</datalist>
+      <table class="stack lines2"><thead><tr>${LD ? '<th style="width:132px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:92px">HSN/SAC</th>' : ''}<th class="n" style="width:70px">Qty</th>${U ? '<th style="width:88px">Unit</th>' : ''}<th class="n" style="width:92px">Rate (₹)</th>${D ? '<th class="n" style="width:68px">Disc %</th>' : ''}${G ? '<th class="n" style="width:68px">GST %</th>' : ''}<th class="n" style="width:100px">Amount</th><th style="width:40px"></th></tr></thead><tbody>
+      ${inv.lines.map((l, i) => `<tr>${LD ? `<td data-k="Date"><input type="date" data-l="${i}.date" value="${l.date || ''}"></td>` : ''}
+        <td data-k="Item" class="c-item"><input class="itemin" autocomplete="off" placeholder="Type or pick an item" data-l="${i}.item" value="${esc(l.item)}"></td>
+        ${H ? `<td data-k="HSN/SAC"><input data-l="${i}.hsn" value="${esc(l.hsn || '')}" placeholder="—"></td>` : ''}
+        <td data-k="Qty"><input type="number" class="n" step="any" data-l="${i}.count" value="${l.count}"></td>
+        ${U ? `<td data-k="Unit"><input list="units" autocomplete="off" data-l="${i}.unit" value="${esc(l.unit || '')}" placeholder="pcs"></td>` : ''}
+        <td data-k="Rate (₹)"><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}"></td>
+        ${D ? `<td data-k="Disc %"><input type="number" class="n" step="0.01" min="0" max="100" data-l="${i}.disc" value="${+l.disc || ''}" placeholder="0"></td>` : ''}
+        ${G ? `<td data-k="GST %"><input type="number" class="n" step="0.01" min="0" data-l="${i}.gst" value="${hasOwnGst(l) ? l.gst : ''}" placeholder="${num(inv.gstRate)}"></td>` : ''}
+        <td data-k="Amount" class="n c-amt" id="lt${i}">${money(lineCalc(inv, l).amount)}</td>
+        <td class="c-del"><button class="btn sm danger" data-del="${i}" title="Remove this line">✕</button></td></tr>`).join('')}</tbody></table>
+      <div class="row" style="align-items:flex-end;margin:10px 0">
+        <div style="flex:1"><button class="btn" id="add">+ Add line</button><span class="muted" id="lncount" style="font-size:12.5px;margin-left:10px"></span></div>
+        ${D ? `<div class="field" style="flex:0 0 210px;margin:0"><label>Discount on whole bill (%)</label><input id="disc" type="number" class="n" step="0.01" min="0" max="100" value="${+inv.discount || ''}" placeholder="0"></div>` : ''}</div>
       <div class="totals" id="totals"></div></div>
     <div class="actions"><button class="btn primary" id="save">Save invoice</button><a class="btn" href="#/invoices">Cancel</a></div>`;
     bind(); totals();
   };
   const totals = () => {
-    const c = calc(inv), r = inv.gstRate / 2;
-    document.getElementById('totals').innerHTML = `<div><span>Sub-total</span><span>₹${money(c.sub)}</span></div><div><span>CGST @ ${r}%</span><span>₹${money(c.cgst)}</span></div><div><span>SGST @ ${r}%</span><span>₹${money(c.sgst)}</span></div><div><span>Total inc GST</span><span>₹${money(c.total)}</span></div><div class="big"><span>Invoice total</span><span>₹${money0(c.rounded)}</span></div>`;
-    inv.lines.forEach((l, i) => { const e = document.getElementById('lt' + i); if (e) e.textContent = money((+l.count || 0) * (+l.cost || 0)); });
+    const c = calc(inv), row = (a, b, cls) => `<div${cls ? ` class="${cls}"` : ''}><span>${a}</span><span>${b}</span></div>`;
+    const less = c.lineDisc || c.invDisc;
+    let h = '';
+    if (less) h += row('Gross amount', '₹' + money(c.gross));
+    if (c.lineDisc) h += row('Item discounts', '− ₹' + money(c.lineDisc));
+    if (c.invDisc) h += row(`Discount @ ${num(inv.discount)}%`, '− ₹' + money(c.invDisc));
+    h += row(less ? 'Taxable value' : 'Sub-total', '₹' + money(c.sub));
+    c.rates.forEach(b => {
+      if (c.inter) h += row(`IGST @ ${num(b.rate)}%`, '₹' + money(b.tax));
+      else h += row(`CGST @ ${num(b.rate / 2)}%`, '₹' + money(b.tax / 2)) + row(`SGST @ ${num(b.rate / 2)}%`, '₹' + money(b.tax / 2));
+    });
+    h += row('Total inc GST', '₹' + money(c.total)) + row('Invoice total', '₹' + money0(c.rounded), 'big');
+    document.getElementById('totals').innerHTML = h;
+    inv.lines.forEach((l, i) => { const e = document.getElementById('lt' + i); if (e) e.textContent = money(lineCalc(inv, l).amount); });
+    document.querySelectorAll('[data-l$=".gst"]').forEach(e => { e.placeholder = num(inv.gstRate); });
+    const n = inv.lines.length, lc = document.getElementById('lncount');
+    if (lc) lc.textContent = n <= ONE_PAGE_LINES ? `${n} of ${ONE_PAGE_LINES} lines · prints on one page` : `${n} lines · more than ${ONE_PAGE_LINES}, so it prints on more than one page`;
   };
   const bind = () => {
     const $ = s => document.getElementById(s);
     $('no').oninput = e => inv.no = e.target.value;
     $('date').oninput = e => inv.date = e.target.value;
     $('gstRate').oninput = e => { inv.gstRate = +e.target.value; totals(); };
+    $('taxType').value = inv.taxType;
+    $('taxType').onchange = e => { inv.taxType = e.target.value; totals(); };
+    if ($('disc')) $('disc').oninput = e => { inv.discount = e.target.value; totals(); };
     $('cust').onclick = e => openMenu(e.currentTarget, db.customers.map(c => ({ v: c.id, t: c.name, s: (c.address || '').split('\n')[0] })), inv.customerId, v => {
       const c = db.customers.find(x => x.id === v); inv.customerId = v;
-      if (c) { inv.billTo = { name: c.name, address: c.address, gst: c.gst }; inv.shipTo = { ...inv.billTo }; sameShip = true; draw(); }
+      if (c) { inv.billTo = { name: c.name, address: c.address, gst: c.gst }; inv.shipTo = { ...inv.billTo }; sameShip = true; autoTax(); draw(); }
     }, { search: db.customers.length > 6 });
     $('same').onchange = e => { sameShip = e.target.checked; if (sameShip) inv.shipTo = { ...inv.billTo }; draw(); };
     document.querySelectorAll('[data-p]').forEach(el => el.oninput = () => {
       const [k, f] = el.dataset.p.split('.'); inv[k][f] = el.value; if (sameShip && k === 'billTo') inv.shipTo[f] = el.value;
+      if (k === 'billTo' && f === 'gst') { autoTax(); $('taxType').value = inv.taxType; totals(); }
     });
     document.querySelectorAll('[data-l]').forEach(el => el.oninput = () => {
       const [i, f] = el.dataset.l.split('.'); const l = inv.lines[+i]; l[f] = el.value;
-      if (f === 'item') { const it = db.items.find(x => x.name === el.value); if (it) { l.cost = it.rate; const ci = el.closest('tr').querySelector('[data-l$=".cost"]'); ci.value = it.rate; } }
+      if (f === 'item') { const it = db.items.find(x => x.name === el.value); if (it) { applyItem(l, it); fillRow(el.closest('tr'), l); } }
       totals();
     });
     // custom item dropdown (searchable, shows details + rate)
@@ -357,15 +418,15 @@ function editor(id) {
     };
     const ddPick = it => {
       const tr = ddInp.closest('tr'), i = +ddInp.dataset.l.split('.')[0], l = inv.lines[i];
-      l.item = it.name; l.cost = it.rate; ddInp.value = it.name; tr.querySelector('[data-l$=".cost"]').value = it.rate;
+      l.item = it.name; applyItem(l, it); ddInp.value = it.name; fillRow(tr, l);
       totals(); ddClose(); const q = tr.querySelector('[data-l$=".count"]'); if (q) { q.focus(); q.select(); }
     };
     const ddShow = inp => {
       ddInp = inp; const q = inp.value.trim().toLowerCase();
-      ddList = db.items.filter(it => !q || (it.name + ' ' + (it.details || '')).toLowerCase().includes(q)).slice(0, 60);
+      ddList = db.items.filter(it => !q || (it.name + ' ' + (it.details || '') + ' ' + (it.hsn || '')).toLowerCase().includes(q)).slice(0, 60);
       ddIdx = ddList.findIndex(it => it.name.toLowerCase() === q);
       const exact = db.items.some(it => it.name.toLowerCase() === q);
-      dd.innerHTML = (ddList.length ? ddList.map((it, k) => `<div class="ddi${k === ddIdx ? ' on' : ''}" data-k="${k}"><div><b>${esc(it.name)}</b>${it.details ? `<small>${esc(it.details)}</small>` : ''}</div><span>₹${money(it.rate)}</span></div>`).join('') : '<div class="ddn">No matching item</div>')
+      dd.innerHTML = (ddList.length ? ddList.map((it, k) => `<div class="ddi${k === ddIdx ? ' on' : ''}" data-k="${k}"><div><b>${esc(it.name)}</b>${it.details ? `<small>${esc(it.details)}</small>` : ''}</div><span>₹${money(it.rate)}${it.unit ? ' / ' + esc(it.unit) : ''}</span></div>`).join('') : '<div class="ddn">No matching item</div>')
         + (q && !exact ? `<div class="ddn add">＋ “${esc(inp.value.trim())}” will be saved as a new item</div>` : '');
       dd.hidden = false; ddPlace();
       const on = dd.querySelector('.on'); if (on) on.scrollIntoView({ block: 'nearest' });
@@ -386,19 +447,26 @@ function editor(id) {
     });
     addEventListener('scroll', () => ddPlace(), true); addEventListener('resize', () => ddPlace());
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { inv.lines.splice(+b.dataset.del, 1); draw(); });
-    $('add').onclick = () => { const last = inv.lines[inv.lines.length - 1]; inv.lines.push({ date: last ? last.date : today(), item: '', count: 1, cost: 0 }); draw(); };
+    $('add').onclick = () => { const last = inv.lines[inv.lines.length - 1]; inv.lines.push(newLine(last ? last.date : today())); draw(); };
     $('save').onclick = async () => {
       if (!inv.billTo.name.trim()) return alert('Bill To name is required');
       inv.lines = inv.lines.filter(l => l.item.trim());
       if (!inv.lines.length) return alert('Add at least one item');
       if (sameShip) inv.shipTo = { ...inv.billTo };
-      inv.lines.forEach(l => { l.count = +l.count; l.cost = +l.cost; });
+      inv.discount = pct(inv.discount);
+      inv.lines.forEach(l => {
+        l.count = +l.count; l.cost = +l.cost;
+        l.disc = pct(l.disc); if (!l.disc) delete l.disc;
+        if (hasOwnGst(l)) l.gst = Math.max(0, +l.gst || 0); else delete l.gst;
+        l.hsn = String(l.hsn || '').trim(); if (!l.hsn) delete l.hsn;
+        l.unit = String(l.unit || '').trim(); if (!l.unit) delete l.unit;
+      });
       if (db.invoices.some(i => i.no === inv.no && i.id !== inv.id)) return alert('Invoice number already exists');
       // remember new customers / items / rates
       let c = db.customers.find(x => x.name.toLowerCase() === inv.billTo.name.trim().toLowerCase());
       if (!c) { c = { id: uid('c'), ...inv.billTo }; db.customers.push(c); }
       inv.customerId = c.id;
-      inv.lines.forEach(l => { const it = db.items.find(x => x.name === l.item); if (!it) db.items.push({ id: uid('i'), name: l.item, rate: l.cost }); });
+      inv.lines.forEach(l => { const it = db.items.find(x => x.name === l.item); if (!it) db.items.push({ id: uid('i'), name: l.item, details: '', hsn: l.hsn || '', unit: l.unit || '', rate: l.cost, gst: hasOwnGst(l) ? l.gst : '' }); });
       if (existing) db.invoices[db.invoices.findIndex(i => i.id === inv.id)] = inv; else db.invoices.push(inv);
       const m = inv.no.startsWith(db.settings.prefix) && /^\d+$/.test(inv.no.slice(db.settings.prefix.length)) ? +inv.no.slice(db.settings.prefix.length) : 0;
       if (m >= db.settings.nextNo) db.settings.nextNo = m + 1;
@@ -421,30 +489,65 @@ function rupeesInWords(n) {
   return out.join(' ') + ' Rupees Only';
 }
 
+// Shrinks an invoice of up to ONE_PAGE_LINES lines so it always prints on a single A4 page.
+// It lays the invoice out at the printed width, measures it, and sets a zoom that the print styles use.
+function fitPaper() {
+  const p = document.querySelector('.paper'); if (!p) return;
+  p.style.removeProperty('--fit'); p.style.removeProperty('--pw');
+  if ((+p.dataset.lines || 0) > ONE_PAGE_LINES) return; // long invoices flow onto more pages
+  const mm = 96 / 25.4, pageW = 186 * mm, pageH = 265 * mm; // A4 minus 12mm margins (273mm), with a little spare height
+  document.body.classList.add('measuring');
+  const fitsAt = f => { p.style.width = (pageW / f) + 'px'; return p.scrollHeight * f <= pageH; };
+  let fit = 1;
+  if (!fitsAt(1)) {
+    let lo = Math.max(0.5, pageH / p.scrollHeight), hi = 1; // lo always fits: a wider layout is never taller
+    for (let k = 0; k < 6; k++) { const mid = (lo + hi) / 2; if (fitsAt(mid)) lo = mid; else hi = mid; }
+    fit = lo;
+  }
+  p.style.width = '';
+  document.body.classList.remove('measuring');
+  if (fit < 1) { p.style.setProperty('--fit', fit.toFixed(4)); p.style.setProperty('--pw', (pageW / fit).toFixed(1) + 'px'); }
+}
+window.addEventListener('beforeprint', fitPaper);
+
 function viewInvoice(id) {
   const inv = db.invoices.find(i => i.id === id);
   if (!inv) { location.hash = '#/invoices'; return; }
-  const s = db.settings, c = calc(inv), r = inv.gstRate / 2;
+  const s = db.settings, c = calc(inv), n = inv.lines.length;
   const due = addDays(inv.date, +s.dueDays || 10);
   const roundOff = c.rounded - c.total;
+  // optional columns are printed only when this invoice actually uses them
+  const LD = lineDates(), H = inv.lines.some(l => l.hsn), D = inv.lines.some(l => +l.disc), G = c.mixed || inv.lines.some(hasOwnGst);
+  const dens = n > 18 ? ' c2' : n > 12 ? ' c1' : ''; // tighter spacing as the invoice gets longer
   const party = (t, p) => `<div class="box"><span class="k">${t}</span><b class="nm">${esc(p.name)}</b>${esc(p.address)}${p.gst ? '\nGST: <b>' + esc(p.gst) + '</b>' : ''}</div>`;
   const lbl = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#777;font-weight:600;display:block';
+  const tr = (a, b, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${a}</td><td>${b}</td></tr>`;
+  let tot = tr('Sub-total', '₹ ' + money(c.amount));
+  if (c.invDisc) tot += tr(`Discount @ ${num(inv.discount)}%`, '− ₹ ' + money(c.invDisc), 'sm') + tr('Taxable value', '₹ ' + money(c.sub));
+  c.rates.forEach(b => {
+    if (c.inter) tot += tr(`IGST @ ${num(b.rate)}%`, '₹ ' + money(b.tax), 'sm');
+    else tot += tr(`CGST @ ${num(b.rate / 2)}%`, '₹ ' + money(b.tax / 2), 'sm') + tr(`SGST @ ${num(b.rate / 2)}%`, '₹ ' + money(b.tax / 2), 'sm');
+  });
+  tot += tr(c.rates.length === 1 ? `Total GST @ ${num(c.rates[0].rate)}%` : 'Total GST', '₹ ' + money(c.gst));
+  tot += tr('Total inc. GST', '₹ ' + money(c.total));
+  tot += tr('Round off', `${roundOff >= 0 ? '+' : '−'} ${money(Math.abs(roundOff))}`, 'sm');
+  tot += tr('INVOICE TOTAL', '₹ ' + money0(c.rounded), 'grand');
   $app.innerHTML = `
   <div class="actions no-print">
-    <button class="btn primary" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn primary" id="print">Print / Save as PDF</button>
     <a class="btn" href="#/edit/${inv.id}">Edit</a>
     <button class="btn" id="pay">${inv.status === 'paid' ? 'Mark unpaid' : 'Mark as paid'}</button>
     <button class="btn danger" id="del">Delete</button>
     <span class="badge ${statusOf(inv)}" style="align-self:center">${statusOf(inv)}${inv.paidDate ? ' · ' + fmtDate(inv.paidDate) : ''}</span>
     <a class="btn" href="#/invoices" style="margin-left:auto">← Back</a></div>
-  <div class="paper" style="${paperVars()}">
+  <div class="paper${dens}" data-lines="${n}" style="${paperVars()}">
     <div class="hd">${s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<div class="bigname">${esc(s.name)}</div>`}
       <div class="co">${s.logo ? `<b>${esc(s.name)}</b>` : ''}${esc(s.address).split('\n').join('<br>')}${s.phone ? '<br>Ph: ' + esc(s.phone) : ''}${(s.gst || s.pan) ? '<br>' + [s.gst && 'GSTIN: ' + esc(s.gst), s.pan && 'PAN: ' + esc(s.pan)].filter(Boolean).join(' &nbsp;|&nbsp; ') : ''}</div></div>
     <div class="ttl">TAX INVOICE</div>
     <div class="meta"><div><span>Invoice No.</span><b>${esc(inv.no)}</b></div><div><span>Invoice Date</span><b>${fmtDate(inv.date)}</b></div><div><span>Payment Due</span><b>${fmtDate(due)}</b></div></div>
     <div class="parties">${party('Bill To', inv.billTo)}${party('Ship To', inv.shipTo)}</div>
-    <div class="scroll"><table class="items" style="min-width:520px"><thead><tr><th class="c" style="width:42px">S.No</th>${lineDates() ? '<th style="width:80px">Date</th>' : ''}<th>Item</th><th class="c" style="width:60px">Qty</th><th class="r" style="width:80px">Rate (₹)</th><th class="r" style="width:100px">Amount (₹)</th></tr></thead><tbody>
-    ${inv.lines.map((l, i) => `<tr><td class="c">${i + 1}</td>${lineDates() ? `<td>${fmtDate(l.date)}</td>` : ''}<td>${esc(l.item)}${lineDates() ? `<small class="dt">${fmtDate(l.date)}</small>` : ''}</td><td class="c">${l.count}</td><td class="r">${money(l.cost)}</td><td class="r">${money(l.count * l.cost)}</td></tr>`).join('')}
+    <div class="scroll"><table class="items" style="min-width:520px"><thead><tr><th class="c c-sno" style="width:42px">S.No</th>${LD ? '<th class="c-date" style="width:76px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:74px">HSN/SAC</th>' : ''}<th class="c" style="width:72px">Qty</th><th class="r" style="width:78px">Rate (₹)</th>${D ? '<th class="r" style="width:54px">Disc %</th>' : ''}${G ? '<th class="r" style="width:54px">GST %</th>' : ''}<th class="r" style="width:96px">Amount (₹)</th></tr></thead><tbody>
+    ${inv.lines.map((l, i) => { const lc = lineCalc(inv, l); return `<tr><td class="c c-sno">${i + 1}</td>${LD ? `<td class="c-date">${fmtDate(l.date)}</td>` : ''}<td>${esc(l.item)}${LD ? `<small class="dt">${fmtDate(l.date)}</small>` : ''}</td>${H ? `<td>${esc(l.hsn || '')}</td>` : ''}<td class="c">${num(l.count)}${l.unit ? ' ' + esc(l.unit) : ''}</td><td class="r">${money(l.cost)}</td>${D ? `<td class="r">${+l.disc ? num(l.disc) + '%' : ''}</td>` : ''}${G ? `<td class="r">${num(lc.rate)}%</td>` : ''}<td class="r">${money(lc.amount)}</td></tr>`; }).join('')}
     </tbody></table></div>
     <div class="lower">
       <div>
@@ -453,20 +556,16 @@ function viewInvoice(id) {
           <table><tr><td>Account name</td><td><b>${esc(s.accountName)}</b></td></tr><tr><td>Account no.</td><td><b>${esc(s.bankAccount)}</b></td></tr><tr><td>IFSC</td><td><b>${esc(s.ifsc)}</b></td></tr><tr><td>Bank</td><td>${esc(s.bankName)}</td></tr></table></div>
       </div>
       <div>
-        <table class="tot">
-          <tr><td>Sub-total</td><td>₹ ${money(c.sub)}</td></tr>
-          <tr class="sm"><td>CGST @ ${r}%</td><td>₹ ${money(c.cgst)}</td></tr>
-          <tr class="sm"><td>SGST @ ${r}%</td><td>₹ ${money(c.sgst)}</td></tr>
-          <tr><td>Total GST @ ${inv.gstRate}%</td><td>₹ ${money(c.gst)}</td></tr>
-          <tr><td>Total inc. GST</td><td>₹ ${money(c.total)}</td></tr>
-          <tr class="sm"><td>Round off</td><td>${roundOff >= 0 ? '+' : '−'} ${money(Math.abs(roundOff))}</td></tr>
-          <tr class="grand"><td>INVOICE TOTAL</td><td>₹ ${money0(c.rounded)}</td></tr></table>
+        <table class="tot">${tot}</table>
         <div class="sign"><div class="line"></div>For ${esc(s.name)}<br><span style="color:#777">Authorised Signatory</span></div>
       </div>
     </div>
     <div class="terms"><b>Terms &amp; conditions:</b> ${esc(s.terms)}</div>
     <div class="thanks">Thank you for your business!</div>
   </div>`;
+  fitPaper();
+  const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
+  document.getElementById('print').onclick = () => { fitPaper(); window.print(); };
   document.getElementById('pay').onclick = async () => {
     if (inv.status === 'paid') { inv.status = 'unpaid'; inv.paidDate = ''; }
     else { inv.status = 'paid'; inv.paidDate = prompt('Payment date (YYYY-MM-DD)', today()) || today(); }
@@ -508,32 +607,41 @@ function itemStats() {
 function items() {
   let q = '';
   const stats = itemStats();
+  const H = colOn('hsn'), U = colOn('unit'), G = colOn('itemGst');
+  const cols = 6 + H + U + G;
   $app.innerHTML = `<h1>Items</h1>
+  <datalist id="units">${UNITS.map(u => `<option value="${u}"></option>`).join('')}</datalist>
   <div class="card"><h2>Add new item</h2>
-    <div class="row" style="align-items:flex-end">
-      <div class="field" style="flex:2"><label>Item / service name *</label><input id="n_name" placeholder="e.g. Product or service name"></div>
-      <div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model, pack or unit"></div>
-      <div class="field" style="flex:1"><label>Rate / value (₹) *</label><input id="n_rate" type="number" step="0.01" placeholder="0"></div>
+    <div class="row tight" style="align-items:flex-end">
+      <div class="field" style="flex:3"><label>Item / service name *</label><input id="n_name" placeholder="e.g. Product or service name"></div>
+      <div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model or pack"></div>
+      ${H ? '<div class="field" style="flex:1.2"><label>HSN / SAC</label><input id="n_hsn" placeholder="optional"></div>' : ''}
+      ${U ? '<div class="field" style="flex:1"><label>Unit</label><input id="n_unit" list="units" autocomplete="off" placeholder="pcs"></div>' : ''}
+      <div class="field" style="flex:1.2"><label>Rate (₹) *</label><input id="n_rate" type="number" step="0.01" placeholder="0"></div>
+      ${G ? `<div class="field" style="flex:1"><label>GST %</label><input id="n_gst" type="number" step="0.01" min="0" placeholder="${num(db.settings.gstRate)}"></div>` : ''}
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary" id="n_add">+ Add item</button></div>
     </div></div>
   <div class="toolbar"><input id="q" placeholder="Search items…"><span class="muted" id="cnt"></span></div>
-  <div class="card"><table class="stack itemsT"><thead><tr><th>Item</th><th>Details</th><th class="n" style="width:120px">Rate (₹)</th><th class="n" style="width:90px">Qty sold</th><th class="n" style="width:120px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
-  <p class="muted" style="margin:10px 0 0;font-size:12px">Changing a rate here only affects new invoices. Old invoices keep the rate they were billed at.</p></div>`;
+  <div class="card"><table class="stack itemsT2"><thead><tr><th style="width:26%">Item</th><th>Details</th>${H ? '<th style="width:110px">HSN / SAC</th>' : ''}${U ? '<th style="width:90px">Unit</th>' : ''}<th class="n" style="width:110px">Rate (₹)</th>${G ? '<th class="n" style="width:84px">GST %</th>' : ''}<th class="n" style="width:84px">Qty sold</th><th class="n" style="width:110px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="muted" style="margin:10px 0 0;font-size:12px">Changes here only affect new invoices. Old invoices keep the rate, unit and GST they were billed with.${G ? ' Leave GST % empty to use the default GST rate of the invoice.' : ''}</p></div>`;
   const draw = () => {
-    const list = db.items.filter(i => (i.name + ' ' + (i.details || '')).toLowerCase().includes(q.toLowerCase()));
+    const list = db.items.filter(i => (i.name + ' ' + (i.details || '') + ' ' + (i.hsn || '')).toLowerCase().includes(q.toLowerCase()));
     document.getElementById('cnt').textContent = `${list.length} of ${db.items.length} items`;
     document.getElementById('rows').innerHTML = list.map(it => {
       const s = stats[it.name] || { qty: 0, amt: 0 };
-      return `<tr><td><input data-i="${it.id}.name" value="${esc(it.name)}"></td>
-      <td><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="—"></td>
-      <td><input type="number" step="0.01" class="n" data-i="${it.id}.rate" value="${it.rate}"></td>
-      <td class="n">${money0(s.qty)}</td><td class="n">₹${money0(s.amt)}</td>
-      <td><button class="btn sm danger" data-del="${it.id}">Delete</button></td></tr>`;
-    }).join('') || '<tr><td colspan="6" class="muted">No items</td></tr>';
+      return `<tr><td data-k="Item" class="c-item"><input data-i="${it.id}.name" value="${esc(it.name)}"></td>
+      <td data-k="Details" class="c-det"><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="—"></td>
+      ${H ? `<td data-k="HSN / SAC"><input data-i="${it.id}.hsn" value="${esc(it.hsn || '')}" placeholder="—"></td>` : ''}
+      ${U ? `<td data-k="Unit"><input data-i="${it.id}.unit" list="units" autocomplete="off" value="${esc(it.unit || '')}" placeholder="—"></td>` : ''}
+      <td data-k="Rate (₹)"><input type="number" step="0.01" class="n" data-i="${it.id}.rate" value="${it.rate}"></td>
+      ${G ? `<td data-k="GST %"><input type="number" step="0.01" min="0" class="n" data-i="${it.id}.gst" value="${hasOwnGst(it) ? it.gst : ''}" placeholder="${num(db.settings.gstRate)}"></td>` : ''}
+      <td data-k="Qty sold" class="n c-stat">${money0(s.qty)}</td><td data-k="Sales" class="n c-stat">₹${money0(s.amt)}</td>
+      <td class="c-del"><button class="btn sm danger" data-del="${it.id}">Delete</button></td></tr>`;
+    }).join('') || `<tr><td colspan="${cols}" class="muted">No items</td></tr>`;
     document.querySelectorAll('[data-i]').forEach(el => el.onchange = async () => {
       const [id, f] = el.dataset.i.split('.'); const it = db.items.find(c => c.id === id);
       if (f === 'name' && !el.value.trim()) { el.value = it.name; return; }
-      it[f] = f === 'rate' ? +el.value : el.value; await save();
+      it[f] = f === 'rate' ? +el.value : f === 'gst' ? (el.value === '' ? '' : Math.max(0, +el.value || 0)) : el.value.trim(); await save();
     });
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const it = db.items.find(c => c.id === b.dataset.del);
@@ -543,11 +651,12 @@ function items() {
   };
   document.getElementById('q').oninput = e => { q = e.target.value; draw(); };
   document.getElementById('n_add').onclick = async () => {
-    const name = document.getElementById('n_name').value.trim(), rate = document.getElementById('n_rate').value;
+    const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+    const name = val('n_name'), rate = val('n_rate'), gst = val('n_gst');
     if (!name) return alert('Item name is required');
-    if (rate === '' || isNaN(+rate)) return alert('Enter the rate / value for this item');
+    if (rate === '' || isNaN(+rate)) return alert('Enter the rate for this item');
     if (db.items.some(i => i.name.toLowerCase() === name.toLowerCase())) return alert('This item already exists');
-    db.items.push({ id: uid('i'), name, details: document.getElementById('n_det').value.trim(), rate: +rate });
+    db.items.push({ id: uid('i'), name, details: val('n_det'), hsn: val('n_hsn'), unit: val('n_unit'), rate: +rate, gst: gst === '' ? '' : Math.max(0, +gst || 0) });
     await save(); items();
   };
   draw();
@@ -559,14 +668,17 @@ function settings() {
   const f = (k, label, type = 'text') => `<div class="field"><label>${label}</label>${type === 'area' ? `<textarea data-s="${k}">${esc(s[k])}</textarea>` : `<input type="${type}" data-s="${k}" value="${esc(s[k])}">`}</div>`;
   $app.innerHTML = `<h1>Settings</h1>
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
-  <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST % (CGST+SGST total)', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
+  <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
   <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>Show a date on every invoice line<br><small class="muted">Useful for daily supply bills. Switch off for normal product or service invoices.</small></span></label>
+  <div style="margin:2px 0 12px"><div class="muted" style="font-weight:600;font-size:13px;margin-bottom:6px">Extra invoice columns</div>${[['hsn', 'HSN / SAC code'], ['unit', 'Unit (pcs, kg, box, hrs…)'], ['itemGst', 'GST % for each item'], ['disc', 'Discount']].map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0 16px 6px 0"><input type="checkbox" data-col="${k}" ${colOn(k) ? 'checked' : ''} style="width:auto;min-height:0"> ${t}</label>`).join('')}
+  <br><small class="muted">A column is printed on an invoice only when that invoice uses it.</small></div>
   <h2 style="margin-top:14px">Bank details</h2>${f('bankAccount', 'Account number')}${f('ifsc', 'IFSC')}${f('bankName', 'Bank name')}${f('accountName', 'Account name')}</div></div>
   ${settingsExtras()}`;
   document.querySelectorAll('[data-s]').forEach(el => el.onchange = async () => {
     const k = el.dataset.s; db.settings[k] = ['nextNo', 'gstRate', 'dueDays'].includes(k) ? +el.value : el.value; await save();
     if (k === 'name') renderChrome();
   });
+  document.querySelectorAll('[data-col]').forEach(el => el.onchange = async () => { db.settings.cols = { ...(db.settings.cols || {}), [el.dataset.col]: el.checked }; await save(); });
   document.getElementById('ld').onchange = async e => { db.settings.lineDates = e.target.checked; await save(); };
   settingsExtrasBind();
 }
@@ -601,8 +713,11 @@ const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const rgb2hex = a => '#' + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
 const mix = (a, b, t) => { const x = hex2rgb(a), y = hex2rgb(b); return rgb2hex(x.map((v, i) => v * (1 - t) + y[i] * t)); };
 const lum = h => { const [r, g, b] = hex2rgb(h).map(v => v / 255); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+const DEFAULT_THEME = '#4a25d0'; // NovaBill indigo, same family as the login page
+// '#3b82f6' was the old built-in default, so it counts as "not chosen yet"
+const themeColor = () => { const t = db && db.settings && db.settings.themeColor; return /^#[0-9a-f]{6}$/i.test(t || '') && t.toLowerCase() !== '#3b82f6' ? t : DEFAULT_THEME; };
 function applyTheme() {
-  const c = (db && db.settings && /^#[0-9a-f]{6}$/i.test(db.settings.themeColor || '')) ? db.settings.themeColor : '#3b82f6';
+  const c = themeColor();
   const st = document.documentElement.style;
   const light = lum(c) > 0.45;
   st.setProperty('--brand', c);
@@ -617,7 +732,7 @@ function applyTheme() {
   const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = c;
 }
 function paperVars() {
-  const c = (db.settings.themeColor || '#3b82f6');
+  const c = themeColor();
   return `--pa:${mix(c, '#000000', 0.3)};--pt:${mix(c, '#ffffff', 0.55)}`;
 }
 
@@ -646,7 +761,7 @@ function renderChrome() {
   document.body.classList.remove('authless');
   const s = db ? db.settings : {};
   document.title = s.name ? s.name + ' · ' + brand.appName : brand.appName;
-  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<img class="appicon" src="icon.png" alt=""><span class="cname">${esc(s.name || 'My Company')}</span>`;
+  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<img class="deflogo" src="${esc(brand.logo || 'novabill-logo.png')}" alt="${esc(brand.appName)}">`;
   document.getElementById('top').innerHTML = `
     <a class="brand" href="#/dashboard">${logo}</a>
     <nav id="nav"><a href="#/dashboard">Dashboard</a><a href="#/invoices">Invoices</a><a href="#/customers">Customers</a><a href="#/items">Items</a><a href="#/settings">Settings</a>${me.role === 'admin' ? '<a href="#/vendors">Vendors</a>' : ''}</nav>
@@ -801,10 +916,10 @@ function settingsExtras() {
   const s = db.settings;
   return `<div class="card"><h2>Logo & colour</h2>
     <div class="row" style="align-items:center">
-      <div style="flex:0 0 220px;min-width:0"><div class="logoprev" id="lp">${s.logo ? `<img src="${esc(s.logo)}" alt="">` : '<span class="muted">No logo, your company name is shown instead</span>'}</div></div>
+      <div style="flex:0 0 220px;min-width:0"><div class="logoprev" id="lp">${s.logo ? `<img src="${esc(s.logo)}" alt="">` : '<span class="muted">No logo yet. The app shows the default logo, and invoices print your company name</span>'}</div></div>
       <div><button class="btn" id="upl">Upload logo</button> ${s.logo ? '<button class="btn danger" id="rml">Remove</button>' : ''}
         <p class="muted" style="font-size:12px;margin:8px 0 0">PNG or JPG. A transparent PNG looks best on invoices.</p></div>
-      <div class="field" style="max-width:200px"><label>Brand colour (menu, buttons, invoice accents)</label><input type="color" id="clr" value="${esc(s.themeColor || '#3b82f6')}" style="height:42px;padding:3px"></div>
+      <div class="field" style="max-width:200px"><label>Brand colour (menu, buttons, invoice accents)</label><input type="color" id="clr" value="${esc(themeColor())}" style="height:42px;padding:3px"></div>
     </div></div>
   <div class="card"><h2>Account</h2>
     <p style="margin:0 0 10px">Signed in as <b>${esc(me.username)}</b> (${me.role})</p>

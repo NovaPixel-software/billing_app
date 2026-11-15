@@ -139,7 +139,7 @@ code{background:var(--tint);padding:1px 5px;border-radius:4px}
   .paper .hd{flex-direction:column;align-items:center;text-align:center;gap:10px}
   .paper .hd .co{text-align:center}
   .paper .items{min-width:0!important}
-  .paper .items th:nth-child(1),.paper .items td:nth-child(1),.paper .items th:nth-child(2),.paper .items td:nth-child(2){display:none}
+  .paper .items .c-sno,.paper .items .c-date{display:none}
   .paper .dt{display:block;color:#777;font-size:10.5px}
   .paper .tot td{padding:5px 4px}
   .itw th:nth-child(1),.itw td:nth-child(1),.itw th:nth-child(4),.itw td:nth-child(4),.itw th:nth-child(6),.itw td:nth-child(6){display:none}
@@ -516,3 +516,65 @@ h1,h2{color:#14223d}
   .login2 .lg{justify-content:center}.login2 .lg img.applogo{margin-left:0;width:230px}
   .auth-h,.auth-sub{text-align:center}.login2 h1.wm{text-align:center}
 }
+
+/* ===== invoice: extra columns, tighter spacing for long bills, single-page print ===== */
+.paper .items td,.paper .items th{overflow-wrap:anywhere}
+/* 13 to 18 lines */
+.paper.c1 .items td{padding:4px 8px}
+.paper.c1 .box{min-height:0}
+.paper.c1 .ttl{margin:12px 0 10px}
+/* 19 lines and more */
+.paper.c2{font-size:11.5px;line-height:1.35}
+.paper.c2 .hd{padding-bottom:9px}.paper.c2 .hd img{height:50px}.paper.c2 .bigname{font-size:21px}
+.paper.c2 .hd .co{font-size:11px;line-height:1.4}.paper.c2 .hd .co b{font-size:13.5px}
+.paper.c2 .ttl{margin:9px 0 8px;font-size:15px}
+.paper.c2 .meta{margin-bottom:9px}.paper.c2 .meta div{padding:4px 10px}.paper.c2 .meta b{font-size:12.5px}
+.paper.c2 .parties{margin-bottom:9px;gap:10px}.paper.c2 .box{min-height:0;padding:6px 10px}.paper.c2 .box b.nm{font-size:12.5px}
+.paper.c2 table.items{font-size:10.8px}.paper.c2 .items th{padding:4px 6px;font-size:9.8px}.paper.c2 .items td{padding:2.5px 6px}
+.paper.c2 .lower{margin-top:9px;gap:14px}
+.paper.c2 .words,.paper.c2 .bank{padding:6px 10px}.paper.c2 .words{margin-bottom:8px}.paper.c2 .words b{font-size:12px}
+.paper.c2 .tot td{padding:3px 8px}.paper.c2 .tot tr.grand td{padding:5px 8px;font-size:13.5px}
+.paper.c2 .sign{margin-top:8px;font-size:11px}.paper.c2 .sign .line{height:30px}
+.paper.c2 .terms{margin-top:9px;padding-top:6px;font-size:10.5px}.paper.c2 .thanks{margin-top:6px;font-size:10.5px}
+/* fitPaper() sets --fit / --pw so an invoice of up to 25 lines is scaled onto one A4 page */
+@media print{.paper{width:var(--pw,auto);zoom:var(--fit,1)}}
+/* while measuring, the invoice is laid out exactly as it prints (also on a phone screen) */
+body.measuring .paper{border:0!important;border-radius:0!important;padding:0!important;max-width:none!important}
+body.measuring .paper .lower{grid-template-columns:1fr 290px}
+body.measuring .paper .parties{grid-template-columns:1fr 1fr}
+body.measuring .paper .meta{grid-template-columns:repeat(3,1fr)}
+body.measuring .paper .hd{flex-direction:row;text-align:left}
+body.measuring .paper .hd .co{text-align:right}
+body.measuring .paper .items .c-sno,body.measuring .paper .items .c-date{display:table-cell}
+body.measuring .paper .dt{display:none}
+
+/* ===== invoice editor + items table with the extra columns ===== */
+.lines2 td input,.itemsT2 td input{width:100%;min-width:0}
+.lines2 th,.lines2 td{padding-left:6px;padding-right:6px}
+.lines2 td.c-amt{white-space:nowrap;font-variant-numeric:tabular-nums}
+.top-default{display:flex;align-items:center}
+@media (max-width:760px){
+  .stack td[data-k]::before{content:attr(data-k)}
+  .lines2 tr,.itemsT2 tr{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;align-items:end}
+  .lines2 td,.itemsT2 td{display:block;padding:0}
+  .lines2 td::before,.itemsT2 td::before{display:block;flex:none;margin-bottom:2px}
+  .lines2 td.c-item,.itemsT2 td.c-item,.itemsT2 td.c-det{grid-column:1/-1}
+  .lines2 td.c-item,.itemsT2 td.c-item{order:-2}.itemsT2 td.c-det{order:-1}
+  .lines2 td.c-amt{grid-column:1/3;order:98;align-self:center;font-weight:700}
+  .lines2 td.c-amt::before,.itemsT2 td.c-stat::before{display:inline;margin-right:8px}
+  .lines2 td.c-del{grid-column:3;order:99;justify-self:end;align-self:center}
+  .itemsT2 td.c-stat{order:97;font-size:13px;color:var(--muted);align-self:center}
+  .itemsT2 td.c-del{order:99;grid-column:3;justify-self:end;align-self:center}
+}
+/* print: only the invoice, on a plain white page with no app padding around it */
+@media print{
+  html,body{background:#fff!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important}
+  main{padding:0!important;margin:0!important;max-width:none!important;min-height:0!important}
+  #banner,.topbar,nav,.ddp{display:none!important}
+  .paper{margin:0!important}
+  .paper .scroll{overflow:visible!important}
+}
+.row.tight>*{min-width:96px}
+.lines2 td input,.itemsT2 td input{padding-left:9px;padding-right:9px}
+.lines2 td input[type=date]{padding-left:6px;padding-right:4px}
+@media (max-width:760px){.row.tight>*{min-width:100%}}
