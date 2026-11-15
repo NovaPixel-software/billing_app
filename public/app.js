@@ -143,7 +143,8 @@ function dashboard() {
   for (let k = nM - 1; k >= 0; k--) keys.push(monthKeyOf(new Date(endD.getFullYear(), endD.getMonth() - k, 1)));
   const byM = Object.fromEntries(keys.map(k => [k, { paid: 0, unpaid: 0, n: 0 }]));
   invs.forEach(i => { const k = i.date.slice(0, 7); if (byM[k]) { byM[k][i.status === 'paid' ? 'paid' : 'unpaid'] += tot(i); byM[k].n++; } });
-  const W = small ? 360 : 720, H = small ? 230 : 250, L = small ? 40 : 46, B = 28, T = 20, RR = 6;
+  const W = small ? 360 : 720, L = small ? 40 : 46, B = 28, T = 20, RR = 6;
+  const chart = (H = small ? 230 : 250) => {
   const maxV = Math.max(1, ...keys.map(k => byM[k].paid + byM[k].unpaid));
   const step = niceStep(maxV / 4), top = step * Math.ceil(maxV / step);
   const bw = (W - L - RR) / keys.length, yy = v => T + (H - T - B) * (1 - v / top);
@@ -160,6 +161,7 @@ function dashboard() {
     svg += `<text x="${x + w / 2}" y="${H - 9}" text-anchor="middle" class="ax">${MON[+k.slice(5) - 1]}</text></g>`;
   });
   svg += '</svg>';
+  return svg; };
 
   // ---- collection status donut ----
   const sp = { paid: 0, unpaid: 0, overdue: 0 }, sn = { paid: 0, unpaid: 0, overdue: 0 };
@@ -193,6 +195,8 @@ function dashboard() {
 
   // ---- reports (tabs) ----
   let report = '';
+  const LIMIT = 10, cut = rows => dash.all ? rows : rows.slice(0, LIMIT);
+  const moreBtn = n => n > LIMIT ? `<button class="more link" id="allrows">${dash.all ? 'Show top ' + LIMIT + ' only' : 'Show all ' + n + ' items'}</button>` : '';
   if (dash.tab === 'monthly') {
     const mrows = [...months].reverse().map(k => {
       const a = invs.filter(i => i.date.startsWith(k)); let q = 0; a.forEach(i => i.lines.forEach(l => q += +l.count || 0));
@@ -204,14 +208,14 @@ function dashboard() {
       <tr class="tf"><td>Total</td><td class="n">${T2.n}</td><td class="n">${money0(T2.q)}</td><td class="n">₹${money(T2.sub)}</td><td class="n">₹${money(T2.gst)}</td><td class="n">₹${money0(T2.total)}</td><td class="n">₹${money0(T2.paid)}</td><td class="n">₹${money0(T2.total - T2.paid)}</td></tr></tbody></table></div>` : '<p class="muted">No invoices yet</p>';
   } else if (dash.tab === 'items') {
     report = itemRows.length ? `<p class="muted" style="margin:0 0 8px">${esc(R.label)}</p><div class="scroll"><table class="itw"><thead><tr><th>#</th><th>Item</th><th class="n">Qty sold</th><th class="n">Avg rate</th><th class="n">Sales (before GST)</th><th style="width:26%">Share</th></tr></thead><tbody>
-      ${itemRows.map(([n, v], i) => `<tr><td class="muted">${i + 1}</td><td>${esc(n)}</td><td class="n">${money0(v.qty)}</td><td class="n">₹${money(v.amt / (v.qty || 1))}</td><td class="n"><b>₹${money0(v.amt)}</b></td><td><div class="hb" style="margin:0"><span class="tr"><i style="width:${v.amt / itemRows[0][1].amt * 100}%"></i></span><span class="am" style="width:46px">${(v.amt / itemTotal * 100).toFixed(1)}%</span></div></td></tr>`).join('')}
-      <tr class="tf"><td></td><td>Total</td><td class="n">${money0(sum(itemRows, r => r[1].qty))}</td><td></td><td class="n">₹${money0(itemTotal)}</td><td></td></tr></tbody></table></div>` : '<p class="muted">No sales in this period</p>';
+      ${cut(itemRows).map(([n, v], i) => `<tr><td class="muted">${i + 1}</td><td>${esc(n)}</td><td class="n">${money0(v.qty)}</td><td class="n">₹${money(v.amt / (v.qty || 1))}</td><td class="n"><b>₹${money0(v.amt)}</b></td><td><div class="hb" style="margin:0"><span class="tr"><i style="width:${v.amt / itemRows[0][1].amt * 100}%"></i></span><span class="am" style="width:46px">${(v.amt / itemTotal * 100).toFixed(1)}%</span></div></td></tr>`).join('')}
+      <tr class="tf"><td></td><td>Total</td><td class="n">${money0(sum(itemRows, r => r[1].qty))}</td><td></td><td class="n">₹${money0(itemTotal)}</td><td></td></tr></tbody></table></div>${moreBtn(itemRows.length)}` : '<p class="muted">No sales in this period</p>';
   } else {
     const allM = [...months].reverse(), matrix = {};
     invs.forEach(i => i.lines.forEach(l => { const m = i.date.slice(0, 7), r = matrix[l.item] || (matrix[l.item] = {}); r[m] = (r[m] || 0) + (dash.mode === 'qty' ? (+l.count || 0) : (+l.count || 0) * (+l.cost || 0)); }));
     const mr = Object.entries(matrix).map(([n, r]) => [n, r, Object.values(r).reduce((a, b) => a + b, 0)]).sort((a, b) => b[2] - a[2]);
     report = mr.length ? `<div class="seg" style="margin:0 0 10px"><button class="${dash.mode === 'qty' ? '' : 'on'}" data-mode="amt">Sales ₹</button><button class="${dash.mode === 'qty' ? 'on' : ''}" data-mode="qty">Quantity</button></div><div class="scroll"><table><thead><tr><th>Item</th>${allM.map(k => `<th class="n">${monthLabel(k)}</th>`).join('')}<th class="n">Total</th></tr></thead><tbody>
-      ${mr.map(([n, r, t]) => `<tr><td>${esc(n)}</td>${allM.map(k => `<td class="n">${r[k] ? money0(r[k]) : '<span class="muted">–</span>'}</td>`).join('')}<td class="n"><b>${money0(t)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No data</p>';
+      ${cut(mr).map(([n, r, t]) => `<tr><td>${esc(n)}</td>${allM.map(k => `<td class="n">${r[k] ? money0(r[k]) : '<span class="muted">–</span>'}</td>`).join('')}<td class="n"><b>${money0(t)}</b></td></tr>`).join('')}</tbody></table></div>${moreBtn(mr.length)}` : '<p class="muted">No data</p>';
   }
 
   // ---- render ----
@@ -226,24 +230,55 @@ function dashboard() {
     <div class="card kpi ${overdueList.length ? 'warn' : ''}"><div class="l">Outstanding (all time)</div><div class="v" style="color:${overdueList.length ? 'var(--red)' : 'inherit'}">₹${money0(outstanding)}</div><div class="d">${overdueList.length ? `<span class="delta down">${overdueList.length} overdue · ₹${money0(overdueAmt)}</span>` : '<span class="delta up">Nothing overdue</span>'}</div><div class="s">${unpaidAll.length} unpaid invoice${unpaidAll.length === 1 ? '' : 's'}</div></div>
   </div>
   <div class="g-chart">
-    <div class="card"><div class="hd2"><h2>Sales trend</h2><div class="key"><span><i class="k-paid"></i>Received</span><span><i class="k-unpaid"></i>Pending</span></div></div><div class="trend">${svg}</div></div>
+    <div class="card"><div class="hd2"><h2>Sales trend</h2><div class="key"><span><i class="k-paid"></i>Received</span><span><i class="k-unpaid"></i>Pending</span></div></div><div class="trend" id="trend">${chart()}</div></div>
     <div class="card"><h2>Collection status</h2><p class="muted" style="margin:-6px 0 12px;font-size:12px">Invoices in ${esc(R.label.toLowerCase())}</p>
       <div class="donut" style="background:${donut}"><b>${spTot ? Math.round(sp.paid / spTot * 100) : 0}%<small>collected</small></b></div>
       <div class="legend">${legend('var(--green)', 'Paid', 'paid')}${legend('#e8b923', 'Unpaid', 'unpaid')}${legend('var(--red)', 'Overdue', 'overdue')}</div></div>
   </div>
-  <div class="grid g2">
-    <div class="card"><h2>Top items</h2>${rk(itemRows.slice(0, 6), itemRows[0] ? itemRows[0][1].amt : 1, v => `${money0(v.qty)} sold · ${(v.amt / itemTotal * 100).toFixed(1)}% of sales`, v => v.amt)}${itemRows.length > 6 ? '<button class="more link" data-tab="items">See all items →</button>' : ''}</div>
-    <div class="card"><h2>Top customers</h2>${rk(custRows.slice(0, 6), custRows[0] ? custRows[0][1] : 1, v => `${(v / custTotal * 100).toFixed(1)}% of billed`, v => v)}</div>
-  </div>
-  <div class="grid g2">
+  <div class="dcols"><div class="dcol">
+    <div class="card" id="topitems"><h2>Top items</h2>${rk(itemRows.slice(0, 10), itemRows[0] ? itemRows[0][1].amt : 1, v => `${money0(v.qty)} sold · ${(v.amt / itemTotal * 100).toFixed(1)}% of sales`, v => v.amt)}${itemRows.length > 6 ? '<button class="more link" data-tab="items">See all items →</button>' : ''}</div>
     <div class="card"><h2>⏰ Needs attention</h2>${attnHtml}</div>
+  </div><div class="dcol">
     <div class="card"><h2>Recent invoices</h2>${recentHtml}</div>
-  </div>
+    <div class="card"><h2>Top customers</h2>${rk(custRows.slice(0, 6), custRows[0] ? custRows[0][1] : 1, v => `${(v / custTotal * 100).toFixed(1)}% of billed`, v => v)}</div>
+  </div></div>
   <div class="card"><div class="tabs" role="tablist">${[['monthly', 'Monthly sales'], ['items', 'Item-wise sales'], ['matrix', 'Item × Month']].map(([k, l]) => `<button class="tab ${dash.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>${report}</div>`;
 
   // ---- events ----
   document.getElementById('period').onclick = e => openMenu(e.currentTarget, [...chips.map(([v, t]) => ({ v, t })), ...(months.length ? [{ head: 'Pick a month' }, ...months.map(m => ({ v: m, t: monthLabel(m) }))] : [])], dash.range, v => { dash.range = v; dashboard(); }, { right: true });
-  document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { dash.tab = b.dataset.tab; dashboard(); });
+  document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { dash.tab = b.dataset.tab; dash.all = false; dashboard(); });
+  const ar = document.getElementById('allrows'); if (ar) ar.onclick = () => { dash.all = !dash.all; dashboard(); };
+  // share the four list cards between the two columns so both come out about the same height
+  const cols = [...document.querySelectorAll('.dcol')];
+  if (cols.length === 2 && getComputedStyle(cols[0].parentElement).gridTemplateColumns.split(' ').length > 1) {
+    const cards = [...cols[0].children, ...cols[1].children];
+    cards.forEach(c => c.style.flex = 'none');
+    const hs = cards.map(c => c.offsetHeight + 16);
+    let best = null;
+    for (let m = 1; m < (1 << cards.length) - 1; m++) {
+      if (!(m & 1)) continue; // Top items always stays on the left
+      let a = 0, b = 0; hs.forEach((h, i) => (m >> i & 1) ? a += h : b += h);
+      if (!best || Math.abs(a - b) < best.d) best = { m, d: Math.abs(a - b) };
+    }
+    const order = [cards[0], cards[2], cards[1], cards[3]]; // Top items, Needs attention, Recent invoices, Top customers
+    order.forEach(c => cols[(best.m >> cards.indexOf(c) & 1) ? 0 : 1].appendChild(c));
+    cards.forEach(c => c.style.flex = '');
+  }
+  // Top items: rows 7-10 only appear when they fit in the space that would otherwise stay empty
+  const ti = document.getElementById('topitems');
+  if (ti) {
+    const extra = [...ti.querySelectorAll('.rk')].slice(6); extra.forEach(r => r.style.display = 'none');
+    const grid = ti.closest('.dcols');
+    if (cols.length === 2 && getComputedStyle(grid).gridTemplateColumns.split(' ').length > 1) {
+      for (const r of extra) { const h0 = grid.offsetHeight; r.style.display = ''; if (grid.offsetHeight > h0 + 1) { r.style.display = 'none'; break; } }
+    }
+  }
+  // let the chart grow to the height of the Collection card next to it
+  const tr = document.getElementById('trend');
+  if (tr && !small && getComputedStyle(tr.parentElement.parentElement).gridTemplateColumns.split(' ').length > 1) {
+    tr.innerHTML = ''; const h = tr.clientHeight, w = tr.clientWidth;
+    tr.innerHTML = chart(h > 150 && w ? Math.round(Math.min(420, Math.max(250, W * h / w))) : 250);
+  }
   document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { dash.mode = b.dataset.mode; dashboard(); });
   document.querySelectorAll('[data-paid]').forEach(b => b.onclick = async () => {
     const inv = db.invoices.find(i => i.id === b.dataset.paid); inv.status = 'paid'; inv.paidDate = todayIso; b.disabled = true; await save(); dashboard();

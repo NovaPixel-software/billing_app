@@ -614,3 +614,11 @@ body.measuring .paper.menu .mlist.two{grid-template-columns:1fr 1fr}
 .row.top6>.field{margin:0;min-width:0}
 @media (max-width:640px){.row.top6{grid-template-columns:1fr 1fr}}
 @media (max-width:400px){.row.top6{grid-template-columns:1fr}}
+/* dashboard: no empty gaps */
+.g-chart>.card:first-child{display:flex;flex-direction:column}
+.g-chart .trend{flex:1;min-height:0;display:flex;align-items:flex-end}
+.dcols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch;margin-bottom:16px}
+.dcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+.dcol>.card{margin:0}
+.dcol>.card:last-child{flex:1}
+@media (max-width:900px){.dcols{grid-template-columns:1fr}}
