@@ -24,6 +24,7 @@ const statusOf = inv => inv.status === 'paid' ? 'paid' : isOverdue(inv) ? 'overd
 
 // ---------- router ----------
 function route() {
+  if (!me || !db) return; // not signed in yet: the login screen is showing
   const h = location.hash.replace(/^#\/?/, '') || 'dashboard';
   const [page, arg] = h.split('/');
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#/' + page));
@@ -177,7 +178,7 @@ function dashboard() {
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
   $app.innerHTML = `
   <div class="dash-head"><div><h1 style="margin:0">${greet} 👋</h1><div class="muted">${esc(db.settings.name)} · showing <b>${esc(R.label)}</b></div></div>
-    <button class="sel period" id="period" type="button"><span>📅 ${esc((chips.find(c => c[0] === dash.range) || [0, monthLabel(dash.range)])[1])}</span></button></div>
+    <button class="sel period" id="period" type="button"><span><i class="cal"></i>${esc((chips.find(c => c[0] === dash.range) || [0, monthLabel(dash.range)])[1])}</span></button></div>
   <div class="grid kpis">
     <div class="card kpi"><div class="l">Total sales</div><div class="v">₹${money0(billed)}</div><div class="d">${delta(billed, prevBilled)}</div><div class="s">${cur.length} invoice${cur.length === 1 ? '' : 's'} · incl. GST ₹${money0(gst)}</div></div>
     <div class="card kpi"><div class="l">Received</div><div class="v" style="color:var(--green)">₹${money0(received)}</div><div class="d">${delta(received, prevRecv)}</div><div class="s">${recvList.length} payment${recvList.length === 1 ? '' : 's'} in this period</div></div>
@@ -641,7 +642,7 @@ function renderChrome() {
   document.body.classList.remove('authless');
   const s = db ? db.settings : {};
   document.title = s.name ? s.name + ' · ' + brand.appName : brand.appName;
-  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<span class="cname">${esc(s.name || 'My Company')}</span>`;
+  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<img class="appicon" src="icon.svg" alt=""><span class="cname">${esc(s.name || 'My Company')}</span>`;
   document.getElementById('top').innerHTML = `
     <a class="brand" href="#/dashboard">${logo}</a>
     <nav id="nav"><a href="#/dashboard">Dashboard</a><a href="#/invoices">Invoices</a><a href="#/customers">Customers</a><a href="#/items">Items</a><a href="#/settings">Settings</a>${me.role === 'admin' ? '<a href="#/vendors">Vendors</a>' : ''}</nav>
@@ -659,7 +660,7 @@ async function logout() {
 
 // ---------- login / forced password change ----------
 function brandMark() {
-  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : '<img src="icon.svg" alt="" width="64" height="64">';
+  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : '<img class="appicon" src="icon.svg" alt="">';
 }
 function showLogin(msg) {
   document.body.classList.add('authless');
@@ -667,7 +668,7 @@ function showLogin(msg) {
   document.getElementById('banner').innerHTML = '';
   document.title = brand.appName + ' · Sign in';
   $app.innerHTML = `<form class="card login" id="lf" autocomplete="on">
-    <div class="lg">${brandMark()}</div><h1 style="text-align:center;margin:6px 0 4px">${esc(brand.appName)}</h1>
+    <div class="lg">${brandMark()}</div><h1 class="wm">${brand.appName === 'NovaBill' ? 'Nova<b>Bill</b>' : esc(brand.appName)}</h1>
     <p class="muted" style="text-align:center;margin:0 0 16px">Sign in to continue</p>
     <div class="field"><label>Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required autofocus></div>
     <div class="field"><label>Password</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
@@ -732,7 +733,7 @@ async function vendors(notice) {
   <div class="card"><h2>Login page branding</h2>
     <div class="row" style="align-items:center">
       <div class="field"><label>App name</label><input id="b_name" value="${esc(brand.appName)}"></div>
-      <div style="flex:0 0 200px;min-width:0"><div class="logoprev">${bl ? `<img src="${esc(bl)}" alt="">` : '<span class="muted">No logo</span>'}</div></div>
+      <div style="flex:0 0 200px;min-width:0"><div class="logoprev">${bl ? `<img src="${esc(bl)}" alt="">` : '<img src="icon.svg" alt="" style="height:56px"><span class="muted" style="margin-left:10px;font-size:12px">Default icon</span>'}</div></div>
       <div><button class="btn" id="b_up">Upload logo</button> <button class="btn" id="b_rm">Remove</button></div></div>
     <div style="margin-top:12px"><button class="btn primary" id="b_save">Save branding</button></div></div>`;
   const reload = n => vendors(n);
