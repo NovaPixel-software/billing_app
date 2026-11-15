@@ -7,11 +7,13 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const money = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money0 = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-const today = () => new Date().toISOString().slice(0, 10);
+const localIso = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+const today = () => localIso(new Date());
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDate = d => { if (!d) return ''; const [y, m, dd] = d.split('-'); return `${dd}-${MON[+m - 1]}-${y.slice(2)}`; };
 const monthLabel = k => { const [y, m] = k.split('-'); return `${MON[+m - 1]} ${y}`; };
-const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+const addDays = (d, n) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return localIso(x); };
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
 
 // Tax + discount maths. Old invoices (no per-line GST, no discounts, no tax type) work out exactly as before.
 const pct = v => Math.min(100, Math.max(0, +v || 0));
@@ -54,7 +56,9 @@ const showUnit = (btn, v) => { const sp = btn.firstElementChild; sp.textContent 
 const colOn = k => !db || !db.settings.cols || db.settings.cols[k] !== false; // optional invoice columns: hsn, unit, itemGst, disc
 const stateOf = g => /^\d{2}/.test(String(g || '').trim()) ? String(g).trim().slice(0, 2) : ''; // first two digits of a GSTIN = state code
 const ONE_PAGE_LINES = 25; // an invoice with up to this many lines always prints on a single A4 page
-const isOverdue = inv => inv.status !== 'paid' && addDays(inv.date, +db.settings.dueDays || 10) < today();
+const dueDays = () => { const v = db.settings.dueDays; return v === '' || v == null || isNaN(+v) ? 10 : Math.max(0, Math.round(+v)); };
+const dueOf = inv => inv.dueDate || addDays(inv.date, dueDays());
+const isOverdue = inv => inv.status !== 'paid' && dueOf(inv) < today();
 const statusOf = inv => inv.status === 'paid' ? 'paid' : isOverdue(inv) ? 'overdue' : 'unpaid';
 
 const lineDates = () => !db || db.settings.lineDates !== false;
@@ -178,8 +182,6 @@ function dashboard() {
     `<div class="rk"><div class="top"><span class="nm" title="${esc(n)}"><em>${i + 1}</em>${esc(n)}</span><b>₹${money0(val(v))}</b></div><div class="tr"><i style="width:${val(v) / max * 100}%"></i></div><div class="sub">${sub(v)}</div></div>`).join('') : '<p class="muted">No sales in this period</p>';
 
   // ---- needs attention + recent ----
-  const dueOf = i => addDays(i.date, +db.settings.dueDays || 10);
-  const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
   const attn = unpaidAll.slice().sort((a, b) => dueOf(a).localeCompare(dueOf(b))).slice(0, 6);
   const attnHtml = attn.length ? attn.map(i => {
     const dd = daysBetween(todayIso, dueOf(i));
@@ -326,9 +328,11 @@ function editor(id) {
   const newLine = d => ({ date: d || today(), item: '', hsn: '', count: 1, unit: '', cost: 0, disc: '', gst: '' });
   const inv = existing ? JSON.parse(JSON.stringify(existing)) : {
     id: uid('inv'), no: s.prefix + s.nextNo, date: today(), customerId: '', billTo: { ...blank }, shipTo: { ...blank },
-    lines: [newLine()], gstRate: s.gstRate, taxType: 'intra', discount: 0, status: 'unpaid', paidDate: '',
+    dueDate: addDays(today(), dueDays()), lines: [newLine()], gstRate: s.gstRate, taxType: 'intra', discount: 0, status: 'unpaid', paidDate: '',
   };
   if (!inv.taxType) inv.taxType = 'intra';
+  if (!inv.dueDate) inv.dueDate = dueOf(inv);
+  const dueHint = () => { const n = daysBetween(inv.date, inv.dueDate); return n === 0 ? 'same day' : n === 1 ? '1 day' : n > 0 ? n + ' days' : 'before invoice date!'; };
   let sameShip = JSON.stringify(inv.billTo) === JSON.stringify(inv.shipTo);
   // a column shows when it is switched on in Settings, or when this invoice already uses it
   inv.lineDates = invDates(inv);
@@ -348,9 +352,10 @@ function editor(id) {
   const draw = () => {
     const LD = inv.lineDates;
     $app.innerHTML = `<h1>${existing ? 'Edit invoice ' + esc(inv.no) : 'New invoice'}</h1>
-    <div class="card"><div class="row">
+    <div class="card"><div class="row top6">
       <div class="field"><label>Invoice No.</label><input id="no" value="${esc(inv.no)}" placeholder="Enter invoice no."></div>
       <div class="field"><label>Date</label><input id="date" type="date" value="${inv.date}"></div>
+      <div class="field"><label>Due date <span class="muted" id="duehint" style="font-weight:400">· ${dueHint()}</span></label><input id="due" type="date" value="${inv.dueDate}"></div>
       <div class="field"><label>Customer (autofill)</label><button class="sel" id="cust" type="button"><span>${esc((db.customers.find(c => c.id === inv.customerId) || {}).name || 'Select customer')}</span></button></div>
       <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}" placeholder="0"></div>
       <div class="field"><label>Tax type</label><button type="button" class="sel" id="taxType"><span></span></button></div></div></div>
@@ -397,7 +402,9 @@ function editor(id) {
   const bind = () => {
     const $ = s => document.getElementById(s);
     $('no').oninput = e => inv.no = e.target.value;
-    $('date').oninput = e => inv.date = e.target.value;
+    // moving the invoice date keeps the same number of days to the due date
+    $('date').oninput = e => { const gap = daysBetween(inv.date, inv.dueDate); inv.date = e.target.value; if (inv.date) { inv.dueDate = addDays(inv.date, isNaN(gap) ? dueDays() : gap); $('due').value = inv.dueDate; } $('duehint').textContent = '· ' + dueHint(); };
+    $('due').oninput = e => { inv.dueDate = e.target.value; $('duehint').textContent = inv.dueDate ? '· ' + dueHint() : ''; };
     $('gstRate').oninput = e => { inv.gstRate = +e.target.value; totals(); };
     showTax();
     $('taxType').onclick = e => openMenu(e.currentTarget, TAX_TYPES.map(([v, t, d]) => ({ v, t, s: d })), inv.taxType, v => { inv.taxType = v; showTax(); totals(); });
@@ -465,6 +472,9 @@ function editor(id) {
     $('add').onclick = () => { const last = inv.lines[inv.lines.length - 1]; inv.lines.push(newLine(last ? last.date : today())); draw(); };
     $('save').onclick = async () => {
       if (!inv.billTo.name.trim()) return alert('Bill To name is required');
+      if (!inv.date) return alert('Enter the invoice date');
+      if (!inv.dueDate) inv.dueDate = addDays(inv.date, dueDays());
+      if (inv.dueDate < inv.date) return alert('Due date cannot be before the invoice date');
       inv.lines = inv.lines.filter(l => l.item.trim());
       if (!inv.lines.length) return alert('Add at least one item');
       if (sameShip) inv.shipTo = { ...inv.billTo };
@@ -560,7 +570,7 @@ function viewInvoice(id) {
   const inv = db.invoices.find(i => i.id === id);
   if (!inv) { location.hash = '#/invoices'; return; }
   const s = db.settings, c = calc(inv), n = inv.lines.length;
-  const due = addDays(inv.date, +s.dueDays || 10);
+  const due = dueOf(inv);
   const roundOff = c.rounded - c.total;
   // optional columns are printed only when this invoice actually uses them
   const LD = invDates(inv), H = inv.lines.some(l => l.hsn), D = inv.lines.some(l => +l.disc), G = c.mixed || inv.lines.some(hasOwnGst);
@@ -765,14 +775,14 @@ function settings() {
   const f = (k, label, type = 'text') => `<div class="field"><label>${label}</label>${type === 'area' ? `<textarea data-s="${k}" placeholder="${ph(label, type)}">${esc(s[k])}</textarea>` : `<input type="${type}" data-s="${k}" value="${esc(s[k])}" placeholder="${ph(label, type)}">`}</div>`;
   $app.innerHTML = `<h1>Settings</h1>
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
-  <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
+  <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days) for new invoices', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
   <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>New invoices show a date on each item<br><small class="muted">Default only. Each invoice can switch it on or off with “Show date on each item”, next to “Ship To same as Bill To”.</small></span></label>
   <div style="margin:2px 0 12px"><div class="muted" style="font-weight:600;font-size:13px;margin-bottom:6px">Extra invoice columns</div>${[['hsn', 'HSN / SAC code'], ['unit', 'Unit (pcs, kg, box, hrs…)'], ['itemGst', 'GST % for each item'], ['disc', 'Discount'], ['details', 'Item details note']].map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0 16px 6px 0"><input type="checkbox" data-col="${k}" ${colOn(k) ? 'checked' : ''} style="width:auto;min-height:0"> ${t}</label>`).join('')}
   <br><small class="muted">A column is printed on an invoice only when that invoice uses it.</small></div>
   <h2 style="margin-top:14px">Bank details</h2>${f('bankAccount', 'Account number')}${f('ifsc', 'IFSC')}${f('bankName', 'Bank name')}${f('accountName', 'Account name')}</div></div>
   ${settingsExtras()}`;
   document.querySelectorAll('[data-s]').forEach(el => el.onchange = async () => {
-    const k = el.dataset.s; db.settings[k] = ['nextNo', 'gstRate', 'dueDays'].includes(k) ? +el.value : el.value; await save();
+    const k = el.dataset.s; db.settings[k] = k === 'dueDays' ? (el.value === '' ? '' : Math.max(0, Math.round(+el.value) || 0)) : ['nextNo', 'gstRate'].includes(k) ? +el.value : el.value; await save();
     if (k === 'name') renderChrome();
   });
   document.querySelectorAll('[data-col]').forEach(el => el.onchange = async () => { db.settings.cols = { ...(db.settings.cols || {}), [el.dataset.col]: el.checked }; await save(); });
@@ -799,6 +809,8 @@ async function load() {
   const r = await api('GET', '/api/db');
   if (r.status === 403 && wsId) { setWs(''); return load(); }
   db = await r.json();
+  const old = db.invoices.filter(i => !i.dueDate && i.date);
+  if (old.length) { old.forEach(i => { i.dueDate = addDays(i.date, dueDays()); }); await save(); }
 }
 async function save() {
   const r = await api('PUT', '/api/db', db);
