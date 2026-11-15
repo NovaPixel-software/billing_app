@@ -584,3 +584,6 @@ body.measuring .paper .dt{display:none}
 .lines2 .sel,.itemsT2 .sel{padding:9px 9px;gap:4px;min-width:0}
 .sel span.muted{color:#8a94a8}
 .field>.sel{min-height:44px}
+/* no up/down spinner arrows on number boxes */
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
