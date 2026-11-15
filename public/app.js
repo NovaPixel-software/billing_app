@@ -50,6 +50,7 @@ function pickUnit(anchor, cur, onPick) {
     onPick(v);
   }, { search: true });
 }
+const showUnit = (btn, v) => { const sp = btn.firstElementChild; sp.textContent = v || 'Select'; sp.className = v ? '' : 'muted'; };
 const colOn = k => !db || !db.settings.cols || db.settings.cols[k] !== false; // optional invoice columns: hsn, unit, itemGst, disc
 const stateOf = g => /^\d{2}/.test(String(g || '').trim()) ? String(g).trim().slice(0, 2) : ''; // first two digits of a GSTIN = state code
 const ONE_PAGE_LINES = 25; // an invoice with up to this many lines always prints on a single A4 page
@@ -256,7 +257,7 @@ function closeMenu() {
 function openMenu(anchor, items, cur, onPick, opts = {}) {
   const again = _menu && _menu.anchor === anchor; closeMenu(); if (again) return;
   const el = document.createElement('div'); el.className = 'ddp menu';
-  el.innerHTML = (opts.search ? '<input class="ddq" placeholder="Search…" autocomplete="off">' : '') + '<div class="ddl"></div>';
+  el.innerHTML = (opts.search ? '<input class="ddq" placeholder="Search" autocomplete="off">' : '') + '<div class="ddl"></div>';
   document.body.appendChild(el); anchor.classList.add('open');
   const list = el.querySelector('.ddl'), q = el.querySelector('.ddq');
   let shown = [], idx = -1;
@@ -307,7 +308,7 @@ function invoices() {
       (i.no + i.billTo.name).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date) || b.no.localeCompare(a.no));
     document.getElementById('rows').innerHTML = rows.map(i => `<tr class="click" onclick="location.hash='#/view/${i.id}'"><td>${esc(i.no)}<small class="dt">${fmtDate(i.date)}</small></td><td style="white-space:nowrap">${fmtDate(i.date)}</td><td>${esc(i.billTo.name)}</td><td class="n">₹${money0(calc(i).rounded)}</td><td><span class="badge ${statusOf(i)}">${statusOf(i)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No invoices</td></tr>';
   };
-  $app.innerHTML = `<h1>Invoices</h1><div class="toolbar"><input id="q" placeholder="Search invoice no / customer">
+  $app.innerHTML = `<h1>Invoices</h1><div class="toolbar"><input id="q" placeholder="Search invoice no. or customer">
     <div class="seg" id="st">${[['all', 'All'], ['unpaid', 'Unpaid'], ['overdue', 'Overdue'], ['paid', 'Paid']].map(([k, l]) => `<button class="${k === 'all' ? 'on' : ''}" data-st="${k}">${l}<em>${k === 'all' ? db.invoices.length : db.invoices.filter(i => statusOf(i) === k).length}</em></button>`).join('')}</div></div>
     <div class="card"><table class="inv"><tr><th>Invoice</th><th>Date</th><th>Customer</th><th class="n">Total</th><th>Status</th></tr><tbody id="rows"></tbody></table></div>`;
   document.getElementById('q').oninput = e => { q = e.target.value; draw(); };
@@ -335,33 +336,33 @@ function editor(id) {
   const autoTax = () => { const a = stateOf(s.gst), b = stateOf(inv.billTo.gst); if (a && b) inv.taxType = a === b ? 'intra' : 'inter'; };
   const showTax = () => { const b = document.getElementById('taxType'); if (b) { b.dataset.v = inv.taxType; b.firstElementChild.textContent = (TAX_TYPES.find(t => t[0] === inv.taxType) || TAX_TYPES[0])[1]; } };
   const applyItem = (l, it) => { l.cost = it.rate; l.hsn = it.hsn || ''; l.unit = it.unit || ''; l.gst = hasOwnGst(it) ? it.gst : ''; };
-  const fillRow = (tr, l) => { ['cost', 'hsn', 'gst'].forEach(f => { const e = tr.querySelector(`[data-l$=".${f}"]`); if (e) e.value = l[f] ?? ''; }); const ub = tr.querySelector('[data-lu]'); if (ub) ub.firstElementChild.textContent = l.unit || '—'; };
+  const fillRow = (tr, l) => { ['cost', 'hsn', 'gst'].forEach(f => { const e = tr.querySelector(`[data-l$=".${f}"]`); if (e) e.value = l[f] ?? ''; }); const ub = tr.querySelector('[data-lu]'); if (ub) showUnit(ub, l.unit); };
 
   const party = (k, title) => `<div class="card" style="flex:1;min-width:260px"><h2>${title}</h2>
-    <div class="field"><label>Name</label><input data-p="${k}.name" value="${esc(inv[k].name)}"></div>
-    <div class="field"><label>Address</label><textarea data-p="${k}.address">${esc(inv[k].address)}</textarea></div>
-    <div class="field"><label>GST No.</label><input data-p="${k}.gst" value="${esc(inv[k].gst)}"></div></div>`;
+    <div class="field"><label>Name</label><input data-p="${k}.name" value="${esc(inv[k].name)}" placeholder="Enter name"></div>
+    <div class="field"><label>Address</label><textarea data-p="${k}.address" placeholder="Enter address">${esc(inv[k].address)}</textarea></div>
+    <div class="field"><label>GST No.</label><input data-p="${k}.gst" value="${esc(inv[k].gst)}" placeholder="Enter GST No. (optional)"></div></div>`;
 
   const draw = () => {
     $app.innerHTML = `<h1>${existing ? 'Edit invoice ' + esc(inv.no) : 'New invoice'}</h1>
     <div class="card"><div class="row">
-      <div class="field"><label>Invoice No.</label><input id="no" value="${esc(inv.no)}"></div>
+      <div class="field"><label>Invoice No.</label><input id="no" value="${esc(inv.no)}" placeholder="Enter invoice no."></div>
       <div class="field"><label>Date</label><input id="date" type="date" value="${inv.date}"></div>
-      <div class="field"><label>Customer (autofill)</label><button class="sel" id="cust" type="button"><span>${esc((db.customers.find(c => c.id === inv.customerId) || {}).name || '— choose customer —')}</span></button></div>
-      <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}"></div>
+      <div class="field"><label>Customer (autofill)</label><button class="sel" id="cust" type="button"><span>${esc((db.customers.find(c => c.id === inv.customerId) || {}).name || 'Select customer')}</span></button></div>
+      <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}" placeholder="0"></div>
       <div class="field"><label>Tax type</label><button type="button" class="sel" id="taxType"><span></span></button></div></div></div>
     <div class="row" style="align-items:stretch">${party('billTo', 'Bill To')}${sameShip ? '' : party('shipTo', 'Ship To')}</div>
     <label style="margin-bottom:12px"><input type="checkbox" id="same" ${sameShip ? 'checked' : ''} style="width:auto"> Ship To same as Bill To</label>
     <div class="card">
-      <table class="stack lines2"><thead><tr>${LD ? '<th style="width:132px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:92px">HSN/SAC</th>' : ''}<th class="n" style="width:70px">Qty</th>${U ? '<th style="width:88px">Unit</th>' : ''}<th class="n" style="width:92px">Rate (₹)</th>${D ? '<th class="n" style="width:68px">Disc %</th>' : ''}${G ? '<th class="n" style="width:68px">GST %</th>' : ''}<th class="n" style="width:100px">Amount</th><th style="width:40px"></th></tr></thead><tbody>
+      <table class="stack lines2"><thead><tr>${LD ? '<th style="width:132px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:98px">HSN/SAC</th>' : ''}<th class="n" style="width:70px">Qty</th>${U ? '<th style="width:88px">Unit</th>' : ''}<th class="n" style="width:92px">Rate (₹)</th>${D ? '<th class="n" style="width:70px">Disc %</th>' : ''}${G ? '<th class="n" style="width:92px">GST %</th>' : ''}<th class="n" style="width:100px">Amount</th><th style="width:40px"></th></tr></thead><tbody>
       ${inv.lines.map((l, i) => `<tr>${LD ? `<td data-k="Date"><input type="date" data-l="${i}.date" value="${l.date || ''}"></td>` : ''}
-        <td data-k="Item" class="c-item"><input class="itemin" autocomplete="off" placeholder="Type or pick an item" data-l="${i}.item" value="${esc(l.item)}"></td>
-        ${H ? `<td data-k="HSN/SAC"><input data-l="${i}.hsn" value="${esc(l.hsn || '')}" placeholder="—"></td>` : ''}
-        <td data-k="Qty"><input type="number" class="n" step="any" data-l="${i}.count" value="${l.count}"></td>
-        ${U ? `<td data-k="Unit"><button type="button" class="sel" data-lu="${i}"><span>${esc(l.unit || '—')}</span></button></td>` : ''}
-        <td data-k="Rate (₹)"><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}"></td>
+        <td data-k="Item" class="c-item"><input class="itemin" autocomplete="off" placeholder="Select or enter item" data-l="${i}.item" value="${esc(l.item)}"></td>
+        ${H ? `<td data-k="HSN/SAC"><input data-l="${i}.hsn" value="${esc(l.hsn || '')}" placeholder="Optional"></td>` : ''}
+        <td data-k="Qty"><input type="number" class="n" step="any" data-l="${i}.count" value="${l.count}" placeholder="0"></td>
+        ${U ? `<td data-k="Unit"><button type="button" class="sel" data-lu="${i}"><span${l.unit ? '' : ' class="muted"'}>${esc(l.unit || 'Select')}</span></button></td>` : ''}
+        <td data-k="Rate (₹)"><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}" placeholder="0"></td>
         ${D ? `<td data-k="Disc %"><input type="number" class="n" step="0.01" min="0" max="100" data-l="${i}.disc" value="${+l.disc || ''}" placeholder="0"></td>` : ''}
-        ${G ? `<td data-k="GST %"><input type="number" class="n" step="0.01" min="0" data-l="${i}.gst" value="${hasOwnGst(l) ? l.gst : ''}" placeholder="${num(inv.gstRate)}"></td>` : ''}
+        ${G ? `<td data-k="GST %"><input type="number" class="n" step="0.01" min="0" data-l="${i}.gst" value="${hasOwnGst(l) ? l.gst : ''}" placeholder="Optional"></td>` : ''}
         <td data-k="Amount" class="n c-amt" id="lt${i}">${money(lineCalc(inv, l).amount)}</td>
         <td class="c-del"><button class="btn sm danger" data-del="${i}" title="Remove this line">✕</button></td></tr>`).join('')}</tbody></table>
       <div class="row" style="align-items:flex-end;margin:10px 0">
@@ -386,7 +387,6 @@ function editor(id) {
     h += row('Total inc GST', '₹' + money(c.total)) + row('Invoice total', '₹' + money0(c.rounded), 'big');
     document.getElementById('totals').innerHTML = h;
     inv.lines.forEach((l, i) => { const e = document.getElementById('lt' + i); if (e) e.textContent = money(lineCalc(inv, l).amount); });
-    document.querySelectorAll('[data-l$=".gst"]').forEach(e => { e.placeholder = num(inv.gstRate); });
     const n = inv.lines.length, lc = document.getElementById('lncount');
     if (lc) lc.textContent = n <= ONE_PAGE_LINES ? `${n} of ${ONE_PAGE_LINES} lines · prints on one page` : `${n} lines · more than ${ONE_PAGE_LINES}, so it prints on more than one page`;
   };
@@ -397,7 +397,7 @@ function editor(id) {
     $('gstRate').oninput = e => { inv.gstRate = +e.target.value; totals(); };
     showTax();
     $('taxType').onclick = e => openMenu(e.currentTarget, TAX_TYPES.map(([v, t, d]) => ({ v, t, s: d })), inv.taxType, v => { inv.taxType = v; showTax(); totals(); });
-    document.querySelectorAll('[data-lu]').forEach(b => b.onclick = () => pickUnit(b, inv.lines[+b.dataset.lu].unit, v => { inv.lines[+b.dataset.lu].unit = v; b.firstElementChild.textContent = v || '—'; }));
+    document.querySelectorAll('[data-lu]').forEach(b => b.onclick = () => pickUnit(b, inv.lines[+b.dataset.lu].unit, v => { inv.lines[+b.dataset.lu].unit = v; showUnit(b, v); }));
     if ($('disc')) $('disc').oninput = e => { inv.discount = e.target.value; totals(); };
     $('cust').onclick = e => openMenu(e.currentTarget, db.customers.map(c => ({ v: c.id, t: c.name, s: (c.address || '').split('\n')[0] })), inv.customerId, v => {
       const c = db.customers.find(x => x.id === v); inv.customerId = v;
@@ -592,17 +592,17 @@ function customers() {
   $app.innerHTML = `<h1>Customers</h1>
   <div class="card"><h2>Add new customer</h2>
     <div class="row" style="align-items:flex-start">
-      <div class="field" style="flex:2"><label>Customer name *</label><input id="c_name" placeholder="e.g. ABC Traders"></div>
-      <div class="field" style="flex:1"><label>GST No.</label><input id="c_gst" placeholder="optional"></div></div>
+      <div class="field" style="flex:2"><label>Customer name *</label><input id="c_name" placeholder="Enter customer name"></div>
+      <div class="field" style="flex:1"><label>GST No.</label><input id="c_gst" placeholder="Enter GST No. (optional)"></div></div>
     <div class="row" style="align-items:flex-start">
-      <div class="field"><label>Billing address</label><textarea id="c_addr" style="min-height:76px" placeholder="Door no, street&#10;Area&#10;City - PIN"></textarea></div>
-      <div class="field"><label>Shipping address</label><textarea id="c_ship" style="min-height:76px" placeholder="Leave empty if it is the same as the billing address"></textarea></div></div>
+      <div class="field"><label>Billing address</label><textarea id="c_addr" style="min-height:76px" placeholder="Enter billing address"></textarea></div>
+      <div class="field"><label>Shipping address</label><textarea id="c_ship" style="min-height:76px" placeholder="Enter shipping address (optional, if different from billing)"></textarea></div></div>
     <button class="btn primary" id="c_add">+ Add customer</button></div>
   <div class="card"><table class="stack custT2"><thead><tr><th style="width:19%">Name</th><th>Billing address</th><th>Shipping address</th><th style="width:176px">GST No.</th><th class="n" style="width:96px">Billed</th><th style="width:84px"></th></tr></thead><tbody>
-  ${db.customers.map(c => `<tr><td data-k="Name"><input data-c="${c.id}.name" value="${esc(c.name)}"></td>
-    <td data-k="Billing address"><textarea data-c="${c.id}.address" style="min-height:64px">${esc(c.address)}</textarea></td>
-    <td data-k="Shipping address"><textarea data-c="${c.id}.shipAddress" style="min-height:64px" placeholder="Same as billing address">${esc(c.shipAddress || '')}</textarea></td>
-    <td data-k="GST No."><input data-c="${c.id}.gst" value="${esc(c.gst)}"></td>
+  ${db.customers.map(c => `<tr><td data-k="Name"><input data-c="${c.id}.name" value="${esc(c.name)}" placeholder="Enter name"></td>
+    <td data-k="Billing address"><textarea data-c="${c.id}.address" style="min-height:64px" placeholder="Enter billing address">${esc(c.address)}</textarea></td>
+    <td data-k="Shipping address"><textarea data-c="${c.id}.shipAddress" style="min-height:64px" placeholder="Optional">${esc(c.shipAddress || '')}</textarea></td>
+    <td data-k="GST No."><input data-c="${c.id}.gst" value="${esc(c.gst)}" placeholder="Optional"></td>
     <td data-k="Billed" class="n">₹${money0(db.invoices.filter(i => i.customerId === c.id).reduce((s, i) => s + calc(i).rounded, 0))}</td>
     <td class="c-del"><button class="btn sm danger" data-del="${c.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No customers yet. Add your first customer above.</td></tr>'}</tbody></table>
   <p class="muted" style="margin:10px 0 0;font-size:12px">When you pick a customer on an invoice, Bill To and Ship To are filled from here. Changes do not alter old invoices.</p></div>`;
@@ -643,28 +643,28 @@ function items() {
   $app.innerHTML = `<h1>Items</h1>
   <div class="card"><h2>Add new item</h2>
     <div class="row tight" style="align-items:flex-end">
-      <div class="field" style="flex:3"><label>Item / service name *</label><input id="n_name" placeholder="e.g. Product or service name"></div>
-      ${Dt ? '<div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model or pack"></div>' : ''}
-      ${H ? '<div class="field" style="flex:1.2"><label>HSN / SAC</label><input id="n_hsn" placeholder="optional"></div>' : ''}
+      <div class="field" style="flex:3"><label>Item / service name *</label><input id="n_name" placeholder="Enter item or service name"></div>
+      ${Dt ? '<div class="field" style="flex:3"><label>Details</label><input id="n_det" placeholder="Enter details (optional)"></div>' : ''}
+      ${H ? '<div class="field" style="flex:1.2"><label>HSN / SAC</label><input id="n_hsn" placeholder="Optional"></div>' : ''}
       ${U ? '<div class="field" style="flex:1.1"><label>Unit</label><button type="button" class="sel" id="n_unit" data-v=""><span class="muted">Select</span></button></div>' : ''}
       <div class="field" style="flex:1.2"><label>Rate (₹) *</label><input id="n_rate" type="number" step="0.01" placeholder="0"></div>
-      ${G ? `<div class="field" style="flex:1"><label>GST %</label><input id="n_gst" type="number" step="0.01" min="0" placeholder="${num(db.settings.gstRate)}"></div>` : ''}
+      ${G ? `<div class="field" style="flex:1"><label>GST %</label><input id="n_gst" type="number" step="0.01" min="0" placeholder="Optional"></div>` : ''}
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary" id="n_add">+ Add item</button></div>
     </div></div>
-  <div class="toolbar"><input id="q" placeholder="Search items…"><span class="muted" id="cnt"></span></div>
-  <div class="card"><table class="stack itemsT2"><thead><tr><th${Dt ? ' style="width:23%"' : ''}>Item</th>${Dt ? '<th>Details</th>' : ''}${H ? '<th style="width:96px">HSN / SAC</th>' : ''}${U ? '<th style="width:94px">Unit</th>' : ''}<th class="n" style="width:96px">Rate (₹)</th>${G ? '<th class="n" style="width:74px">GST %</th>' : ''}<th class="n" style="width:78px">Qty sold</th><th class="n" style="width:100px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
-  <p class="muted" style="margin:10px 0 0;font-size:12px">Changes here only affect new invoices. Old invoices keep the rate, unit and GST they were billed with.${G ? ' Leave GST % empty to use the default GST rate of the invoice.' : ''}</p></div>`;
+  <div class="toolbar"><input id="q" placeholder="Search items"><span class="muted" id="cnt"></span></div>
+  <div class="card"><table class="stack itemsT2"><thead><tr><th${Dt ? ' style="width:23%"' : ''}>Item</th>${Dt ? '<th>Details</th>' : ''}${H ? '<th style="width:96px">HSN / SAC</th>' : ''}${U ? '<th style="width:94px">Unit</th>' : ''}<th class="n" style="width:96px">Rate (₹)</th>${G ? '<th class="n" style="width:92px">GST %</th>' : ''}<th class="n" style="width:78px">Qty sold</th><th class="n" style="width:100px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
+  <p class="muted" style="margin:10px 0 0;font-size:12px">Changes here only affect new invoices. Old invoices keep the rate, unit and GST they were billed with.${G ? ' If GST % is left empty, the default GST rate of the invoice is used.' : ''}</p></div>`;
   const draw = () => {
     const list = db.items.filter(i => (i.name + ' ' + (i.details || '') + ' ' + (i.hsn || '')).toLowerCase().includes(q.toLowerCase()));
     document.getElementById('cnt').textContent = `${list.length} of ${db.items.length} items`;
     document.getElementById('rows').innerHTML = list.map(it => {
       const s = stats[it.name] || { qty: 0, amt: 0 };
-      return `<tr><td data-k="Item" class="c-item"><input data-i="${it.id}.name" value="${esc(it.name)}"></td>
-      ${Dt ? `<td data-k="Details" class="c-det"><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="—"></td>` : ''}
-      ${H ? `<td data-k="HSN / SAC"><input data-i="${it.id}.hsn" value="${esc(it.hsn || '')}" placeholder="—"></td>` : ''}
-      ${U ? `<td data-k="Unit"><button type="button" class="sel" data-iu="${it.id}"><span>${esc(it.unit || '—')}</span></button></td>` : ''}
-      <td data-k="Rate (₹)"><input type="number" step="0.01" class="n" data-i="${it.id}.rate" value="${it.rate}"></td>
-      ${G ? `<td data-k="GST %"><input type="number" step="0.01" min="0" class="n" data-i="${it.id}.gst" value="${hasOwnGst(it) ? it.gst : ''}" placeholder="${num(db.settings.gstRate)}"></td>` : ''}
+      return `<tr><td data-k="Item" class="c-item"><input data-i="${it.id}.name" value="${esc(it.name)}" placeholder="Enter item name"></td>
+      ${Dt ? `<td data-k="Details" class="c-det"><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="Optional"></td>` : ''}
+      ${H ? `<td data-k="HSN / SAC"><input data-i="${it.id}.hsn" value="${esc(it.hsn || '')}" placeholder="Optional"></td>` : ''}
+      ${U ? `<td data-k="Unit"><button type="button" class="sel" data-iu="${it.id}"><span${it.unit ? '' : ' class="muted"'}>${esc(it.unit || 'Select')}</span></button></td>` : ''}
+      <td data-k="Rate (₹)"><input type="number" step="0.01" class="n" data-i="${it.id}.rate" value="${it.rate}" placeholder="0"></td>
+      ${G ? `<td data-k="GST %"><input type="number" step="0.01" min="0" class="n" data-i="${it.id}.gst" value="${hasOwnGst(it) ? it.gst : ''}" placeholder="Optional"></td>` : ''}
       <td data-k="Qty sold" class="n c-stat">${money0(s.qty)}</td><td data-k="Sales" class="n c-stat">₹${money0(s.amt)}</td>
       <td class="c-del"><button class="btn sm danger" data-del="${it.id}">Delete</button></td></tr>`;
     }).join('') || `<tr><td colspan="${cols}" class="muted">No items</td></tr>`;
@@ -673,7 +673,7 @@ function items() {
       if (f === 'name' && !el.value.trim()) { el.value = it.name; return; }
       it[f] = f === 'rate' ? +el.value : f === 'gst' ? (el.value === '' ? '' : Math.max(0, +el.value || 0)) : el.value.trim(); await save();
     });
-    document.querySelectorAll('[data-iu]').forEach(b => b.onclick = () => { const it = db.items.find(c => c.id === b.dataset.iu); pickUnit(b, it.unit, async v => { it.unit = v; b.firstElementChild.textContent = v || '—'; await save(); }); });
+    document.querySelectorAll('[data-iu]').forEach(b => b.onclick = () => { const it = db.items.find(c => c.id === b.dataset.iu); pickUnit(b, it.unit, async v => { it.unit = v; showUnit(b, v); await save(); }); });
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const it = db.items.find(c => c.id === b.dataset.del);
       if (!confirm(`Delete "${it.name}"? Old invoices are not affected.`)) return;
@@ -682,7 +682,7 @@ function items() {
   };
   document.getElementById('q').oninput = e => { q = e.target.value; draw(); };
   const nu = document.getElementById('n_unit');
-  if (nu) nu.onclick = () => pickUnit(nu, nu.dataset.v, v => { nu.dataset.v = v; nu.firstElementChild.textContent = v || 'Select'; nu.firstElementChild.className = v ? '' : 'muted'; });
+  if (nu) nu.onclick = () => pickUnit(nu, nu.dataset.v, v => { nu.dataset.v = v; showUnit(nu, v); });
   document.getElementById('n_add').onclick = async () => {
     const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
     const name = val('n_name'), rate = val('n_rate'), gst = val('n_gst');
@@ -698,7 +698,8 @@ function items() {
 // ---------- settings ----------
 function settings() {
   const s = db.settings;
-  const f = (k, label, type = 'text') => `<div class="field"><label>${label}</label>${type === 'area' ? `<textarea data-s="${k}">${esc(s[k])}</textarea>` : `<input type="${type}" data-s="${k}" value="${esc(s[k])}">`}</div>`;
+  const ph = (label, type) => type === 'number' ? '0' : 'Enter ' + (/^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label);
+  const f = (k, label, type = 'text') => `<div class="field"><label>${label}</label>${type === 'area' ? `<textarea data-s="${k}" placeholder="${ph(label, type)}">${esc(s[k])}</textarea>` : `<input type="${type}" data-s="${k}" value="${esc(s[k])}" placeholder="${ph(label, type)}">`}</div>`;
   $app.innerHTML = `<h1>Settings</h1>
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
   <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
@@ -839,8 +840,8 @@ function showLogin(msg) {
         <div class="lg">${brandMark()}</div>${own ? '' : `<h1 class="wm">${esc(brand.appName)}</h1>`}
         <h2 class="auth-h">Welcome back</h2>
         <p class="muted auth-sub">Sign in to your account to continue</p>
-        <div class="field"><label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required autofocus></div>
-        <div class="field"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required autofocus placeholder="Enter username"></div>
+        <div class="field"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required placeholder="Enter password"></div>
         <label class="auth-show"><input type="checkbox" id="show"> Show password</label>
         <div id="err" class="err">${esc(msg || '')}</div>
         <button class="btn primary" id="go">Sign in</button>
@@ -864,9 +865,9 @@ function showChangePassword(force) {
   $app.innerHTML = `<form class="card login" id="cf">
     <h1 style="text-align:center;margin:0 0 4px">Set your password</h1>
     <p class="muted" style="text-align:center;margin:0 0 16px">${force ? 'For security, choose your own password before you continue.' : ''}</p>
-    <div class="field"><label>Current / temporary password</label><input id="o" type="password" autocomplete="current-password" required></div>
-    <div class="field"><label>New password (min 6 characters)</label><input id="n1" type="password" autocomplete="new-password" required minlength="6"></div>
-    <div class="field"><label>Confirm new password</label><input id="n2" type="password" autocomplete="new-password" required minlength="6"></div>
+    <div class="field"><label>Current / temporary password</label><input id="o" type="password" autocomplete="current-password" required placeholder="Enter current password"></div>
+    <div class="field"><label>New password (min 6 characters)</label><input id="n1" type="password" autocomplete="new-password" required minlength="6" placeholder="Enter new password"></div>
+    <div class="field"><label>Confirm new password</label><input id="n2" type="password" autocomplete="new-password" required minlength="6" placeholder="Enter new password again"></div>
     <div id="err" class="err"></div>
     <button class="btn primary" style="width:100%">Save password & continue</button>
     <button type="button" class="btn" style="width:100%;margin-top:8px" id="lo">Sign out</button></form>`;
@@ -890,9 +891,9 @@ async function vendors(notice) {
   $app.innerHTML = `<h1>Vendors</h1>
   <div class="card"><h2>Add a vendor</h2>
     <form id="nv"><div class="row" style="align-items:flex-end">
-      <div class="field" style="flex:2"><label>Company name *</label><input id="v_co" required placeholder="e.g. ABC Traders"></div>
-      <div class="field"><label>Username *</label><input id="v_us" required autocapitalize="none" placeholder="e.g. abctraders"></div>
-      <div class="field"><label>Password *</label><input id="v_pw" required minlength="6" value="${genPw()}"></div>
+      <div class="field" style="flex:2"><label>Company name *</label><input id="v_co" required placeholder="Enter company name"></div>
+      <div class="field"><label>Username *</label><input id="v_us" required autocapitalize="none" placeholder="Enter username"></div>
+      <div class="field"><label>Password *</label><input id="v_pw" required minlength="6" value="${genPw()}" placeholder="Enter password"></div>
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary">+ Create vendor</button></div></div></form>
     <p class="muted" style="font-size:12px;margin:0">Share the username and password with the vendor yourself. They can change it later from Settings if they want.</p>
     <div id="msg" class="${notice ? 'ok' : ''}">${notice || ''}</div></div>
@@ -904,7 +905,7 @@ async function vendors(notice) {
     <td class="acts"><button class="btn sm" data-open="${u.id}">Open</button><button class="btn sm" data-tog="${u.id}">${u.active ? 'Disable' : 'Enable'}</button><button class="btn sm" data-pw="${u.id}">Reset password</button><button class="btn sm danger" data-del="${u.id}">Delete</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted">No vendors yet. Add your first vendor above.</p>'}</div>
   <div class="card"><h2>Login page branding</h2>
     <div class="row" style="align-items:center">
-      <div class="field"><label>App name</label><input id="b_name" value="${esc(brand.appName)}"></div>
+      <div class="field"><label>App name</label><input id="b_name" value="${esc(brand.appName)}" placeholder="Enter app name"></div>
       <div style="flex:0 0 200px;min-width:0"><div class="logoprev">${bl ? `<img src="${esc(bl)}" alt="">` : '<img src="icon.png" alt="" style="height:56px"><span class="muted" style="margin-left:10px;font-size:12px">Default icon</span>'}</div></div>
       <div><button class="btn" id="b_up">Upload logo</button> <button class="btn" id="b_rm">Remove</button></div></div>
     <div style="margin-top:12px"><button class="btn primary" id="b_save">Save branding</button></div></div>`;
@@ -957,8 +958,8 @@ function settingsExtras() {
   <div class="card"><h2>Account</h2>
     <p style="margin:0 0 10px">Signed in as <b>${esc(me.username)}</b> (${me.role})</p>
     <form id="pwf"><div class="row" style="align-items:flex-end">
-      <div class="field"><label>Current password</label><input id="pw0" type="password" autocomplete="current-password" required></div>
-      <div class="field"><label>New password (min 6)</label><input id="pw1" type="password" autocomplete="new-password" minlength="6" required></div>
+      <div class="field"><label>Current password</label><input id="pw0" type="password" autocomplete="current-password" required placeholder="Enter current password"></div>
+      <div class="field"><label>New password (min 6)</label><input id="pw1" type="password" autocomplete="new-password" minlength="6" required placeholder="Enter new password"></div>
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn">Change password</button></div></div></form>
     <div id="pwmsg"></div>
     <div style="margin-top:8px"><button class="btn" id="dl">Download my data (backup)</button> <button class="btn danger" id="lo2">Sign out</button></div></div>`;
