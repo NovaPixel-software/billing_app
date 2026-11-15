@@ -578,3 +578,5 @@ body.measuring .paper .dt{display:none}
 .lines2 td input,.itemsT2 td input{padding-left:9px;padding-right:9px}
 .lines2 td input[type=date]{padding-left:6px;padding-right:4px}
 @media (max-width:760px){.row.tight>*{min-width:100%}}
+.custT2 td{vertical-align:top}.custT2 td.n{padding-top:20px}.custT2 td input,.custT2 td textarea{width:100%;min-width:0}
+@media (max-width:760px){.custT2 td{align-items:flex-start}.custT2 td::before{padding-top:10px}.custT2 td.n{padding-top:4px}.custT2 td.n::before{padding-top:0}.custT2 td.c-del{justify-content:flex-end}}

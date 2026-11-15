@@ -391,7 +391,7 @@ function editor(id) {
     if ($('disc')) $('disc').oninput = e => { inv.discount = e.target.value; totals(); };
     $('cust').onclick = e => openMenu(e.currentTarget, db.customers.map(c => ({ v: c.id, t: c.name, s: (c.address || '').split('\n')[0] })), inv.customerId, v => {
       const c = db.customers.find(x => x.id === v); inv.customerId = v;
-      if (c) { inv.billTo = { name: c.name, address: c.address, gst: c.gst }; inv.shipTo = { ...inv.billTo }; sameShip = true; autoTax(); draw(); }
+      if (c) { inv.billTo = { name: c.name, address: c.address, gst: c.gst }; inv.shipTo = { ...inv.billTo, address: c.shipAddress || c.address }; sameShip = !c.shipAddress || c.shipAddress === c.address; autoTax(); draw(); }
     }, { search: db.customers.length > 6 });
     $('same').onchange = e => { sameShip = e.target.checked; if (sameShip) inv.shipTo = { ...inv.billTo }; draw(); };
     document.querySelectorAll('[data-p]').forEach(el => el.oninput = () => {
@@ -464,7 +464,7 @@ function editor(id) {
       if (db.invoices.some(i => i.no === inv.no && i.id !== inv.id)) return alert('Invoice number already exists');
       // remember new customers / items / rates
       let c = db.customers.find(x => x.name.toLowerCase() === inv.billTo.name.trim().toLowerCase());
-      if (!c) { c = { id: uid('c'), ...inv.billTo }; db.customers.push(c); }
+      if (!c) { c = { id: uid('c'), ...inv.billTo, shipAddress: inv.shipTo.address && inv.shipTo.address !== inv.billTo.address ? inv.shipTo.address : '' }; db.customers.push(c); }
       inv.customerId = c.id;
       inv.lines.forEach(l => { const it = db.items.find(x => x.name === l.item); if (!it) db.items.push({ id: uid('i'), name: l.item, details: '', hsn: l.hsn || '', unit: l.unit || '', rate: l.cost, gst: hasOwnGst(l) ? l.gst : '' }); });
       if (existing) db.invoices[db.invoices.findIndex(i => i.id === inv.id)] = inv; else db.invoices.push(inv);
@@ -579,20 +579,41 @@ function viewInvoice(id) {
 
 // ---------- customers ----------
 function customers() {
-  $app.innerHTML = `<h1>Customers</h1><div class="card"><table class="stack custT"><tr><th>Name</th><th>Address</th><th>GST</th><th class="n">Billed</th><th></th></tr>
-  ${db.customers.map(c => `<tr><td><input data-c="${c.id}.name" value="${esc(c.name)}"></td><td><textarea data-c="${c.id}.address" style="min-height:60px">${esc(c.address)}</textarea></td>
-    <td><input data-c="${c.id}.gst" value="${esc(c.gst)}"></td>
-    <td class="n">₹${money0(db.invoices.filter(i => i.customerId === c.id).reduce((s, i) => s + calc(i).rounded, 0))}</td>
-    <td><button class="btn sm danger" data-del="${c.id}">Delete</button></td></tr>`).join('')}</table>
-  <div style="margin-top:12px"><button class="btn" id="add">+ Add customer</button></div></div>`;
+  $app.innerHTML = `<h1>Customers</h1>
+  <div class="card"><h2>Add new customer</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="field" style="flex:2"><label>Customer name *</label><input id="c_name" placeholder="e.g. ABC Traders"></div>
+      <div class="field" style="flex:1"><label>GST No.</label><input id="c_gst" placeholder="optional"></div></div>
+    <div class="row" style="align-items:flex-start">
+      <div class="field"><label>Billing address</label><textarea id="c_addr" style="min-height:76px" placeholder="Door no, street&#10;Area&#10;City - PIN"></textarea></div>
+      <div class="field"><label>Shipping address</label><textarea id="c_ship" style="min-height:76px" placeholder="Leave empty if it is the same as the billing address"></textarea></div></div>
+    <button class="btn primary" id="c_add">+ Add customer</button></div>
+  <div class="card"><table class="stack custT2"><thead><tr><th style="width:19%">Name</th><th>Billing address</th><th>Shipping address</th><th style="width:176px">GST No.</th><th class="n" style="width:96px">Billed</th><th style="width:84px"></th></tr></thead><tbody>
+  ${db.customers.map(c => `<tr><td data-k="Name"><input data-c="${c.id}.name" value="${esc(c.name)}"></td>
+    <td data-k="Billing address"><textarea data-c="${c.id}.address" style="min-height:64px">${esc(c.address)}</textarea></td>
+    <td data-k="Shipping address"><textarea data-c="${c.id}.shipAddress" style="min-height:64px" placeholder="Same as billing address">${esc(c.shipAddress || '')}</textarea></td>
+    <td data-k="GST No."><input data-c="${c.id}.gst" value="${esc(c.gst)}"></td>
+    <td data-k="Billed" class="n">₹${money0(db.invoices.filter(i => i.customerId === c.id).reduce((s, i) => s + calc(i).rounded, 0))}</td>
+    <td class="c-del"><button class="btn sm danger" data-del="${c.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No customers yet. Add your first customer above.</td></tr>'}</tbody></table>
+  <p class="muted" style="margin:10px 0 0;font-size:12px">When you pick a customer on an invoice, Bill To and Ship To are filled from here. Changes do not alter old invoices.</p></div>`;
   document.querySelectorAll('[data-c]').forEach(el => el.onchange = async () => {
-    const [id, f] = el.dataset.c.split('.'); db.customers.find(c => c.id === id)[f] = el.value; await save();
+    const [id, f] = el.dataset.c.split('.'); const c = db.customers.find(x => x.id === id);
+    if (f === 'name' && !el.value.trim()) { el.value = c.name; return; }
+    c[f] = el.value.trim(); await save();
   });
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     if (!confirm('Delete customer? Existing invoices keep their copy of the details.')) return;
     db.customers = db.customers.filter(c => c.id !== b.dataset.del); await save(); customers();
   });
-  document.getElementById('add').onclick = async () => { db.customers.push({ id: uid('c'), name: 'New customer', address: '', gst: '' }); await save(); customers(); };
+  document.getElementById('c_add').onclick = async () => {
+    const val = id => document.getElementById(id).value.trim();
+    const name = val('c_name');
+    if (!name) return alert('Customer name is required');
+    if (db.customers.some(c => c.name.toLowerCase() === name.toLowerCase())) return alert('This customer already exists');
+    const address = val('c_addr'), ship = val('c_ship');
+    db.customers.push({ id: uid('c'), name, address, shipAddress: ship === address ? '' : ship, gst: val('c_gst') });
+    await save(); customers();
+  };
 }
 
 // ---------- items ----------

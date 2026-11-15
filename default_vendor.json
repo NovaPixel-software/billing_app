@@ -8,7 +8,7 @@
     "logo": "logo.png",
     "themeColor": "#3b82f6",
     "prefix": "SP.",
-    "nextNo": 103,
+    "nextNo": 104,
     "gstRate": 5,
     "dueDays": 10,
     "bankAccount": "123456789012",
@@ -22,12 +22,14 @@
       "id": "c1",
       "name": "MK Enterprise",
       "address": "4th Floor, No.33B, Karthigai St.\nRajalakshmi Nagar,\nMoulivakkam,\nChennai – 600125 TN India",
+      "shipAddress": "",
       "gst": "33JRCPS6156P1ZY"
     },
     {
       "id": "c2",
       "name": "Global Tech Park Canteen",
       "address": "Tech Park Road, Perungudi,\nChennai – 600096 TN India",
+      "shipAddress": "Food Court, Block B, Ground Floor\nTech Park Road, Perungudi,\nChennai – 600096 TN India",
       "gst": "33AABCG5678B1Z2"
     }
   ],
@@ -36,73 +38,226 @@
       "id": "i1",
       "name": "Channa samosa",
       "details": "",
-      "rate": 35
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 35,
+      "gst": ""
     },
     {
       "id": "i2",
       "name": "Pani puri",
       "details": "",
-      "rate": 47
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 47,
+      "gst": ""
     },
     {
       "id": "i3",
       "name": "Peanut salad",
       "details": "",
-      "rate": 52
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 52,
+      "gst": ""
     },
     {
       "id": "i4",
       "name": "Breakfast combo",
       "details": "",
-      "rate": 280
+      "hsn": "9963",
+      "unit": "box",
+      "rate": 280,
+      "gst": ""
     },
     {
       "id": "i5",
       "name": "Veg burger",
       "details": "",
-      "rate": 60
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 60,
+      "gst": ""
     },
     {
       "id": "i6",
       "name": "Fruit salad",
       "details": "",
-      "rate": 60
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 60,
+      "gst": ""
     },
     {
       "id": "i7",
       "name": "Veg masala sandwich",
       "details": "",
-      "rate": 42
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 42,
+      "gst": ""
     },
     {
       "id": "i8",
       "name": "Mushroom samosa",
       "details": "",
-      "rate": 47
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 47,
+      "gst": ""
     },
     {
       "id": "i9",
       "name": "Gobi pakora",
       "details": "",
-      "rate": 60
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 60,
+      "gst": ""
     },
     {
       "id": "i10",
       "name": "Medu vada (2) & Bonda (2)",
       "details": "",
-      "rate": 52
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 52,
+      "gst": ""
     },
     {
       "id": "i11",
       "name": "Panneer puff",
       "details": "",
-      "rate": 60
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 60,
+      "gst": ""
     },
     {
       "id": "i12",
       "name": "Sambar vada",
       "details": "",
-      "rate": 60
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 60,
+      "gst": ""
+    },
+    {
+      "id": "i13",
+      "name": "Paneer samosa",
+      "details": "",
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 45,
+      "gst": ""
+    },
+    {
+      "id": "i14",
+      "name": "Medu pakoda",
+      "details": "",
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 50,
+      "gst": ""
+    },
+    {
+      "id": "i15",
+      "name": "Masala bonda",
+      "details": "",
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 40,
+      "gst": ""
+    },
+    {
+      "id": "i16",
+      "name": "Garden fresh sandwich",
+      "details": "",
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 45,
+      "gst": ""
+    },
+    {
+      "id": "i17",
+      "name": "Spl. bun butter jam",
+      "details": "",
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 35,
+      "gst": ""
+    },
+    {
+      "id": "i18",
+      "name": "Green gram sundal",
+      "details": "",
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 40,
+      "gst": ""
+    },
+    {
+      "id": "i19",
+      "name": "Set dosa",
+      "details": "",
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 70,
+      "gst": ""
+    },
+    {
+      "id": "i20",
+      "name": "Norukkal",
+      "details": "",
+      "hsn": "9963",
+      "unit": "plate",
+      "rate": 55,
+      "gst": ""
+    },
+    {
+      "id": "i21",
+      "name": "Mixed nuts",
+      "details": "",
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 80,
+      "gst": ""
+    },
+    {
+      "id": "i22",
+      "name": "Palkova poli",
+      "details": "",
+      "hsn": "9963",
+      "unit": "pcs",
+      "rate": 45,
+      "gst": ""
+    },
+    {
+      "id": "i23",
+      "name": "Filter coffee",
+      "details": "",
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 25,
+      "gst": ""
+    },
+    {
+      "id": "i24",
+      "name": "Tea",
+      "details": "",
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 20,
+      "gst": ""
+    },
+    {
+      "id": "i25",
+      "name": "Lemon juice",
+      "details": "",
+      "hsn": "9963",
+      "unit": "cup",
+      "rate": 30,
+      "gst": ""
     }
   ],
   "invoices": [
@@ -229,6 +384,231 @@
         }
       ],
       "gstRate": 5,
+      "status": "unpaid",
+      "paidDate": ""
+    },
+    {
+      "id": "inv103",
+      "no": "SP.103",
+      "date": "2026-11-14",
+      "customerId": "c2",
+      "billTo": {
+        "name": "Global Tech Park Canteen",
+        "address": "Tech Park Road, Perungudi,\nChennai – 600096 TN India",
+        "gst": "33AABCG5678B1Z2"
+      },
+      "shipTo": {
+        "name": "Global Tech Park Canteen",
+        "address": "Food Court, Block B, Ground Floor\nTech Park Road, Perungudi,\nChennai – 600096 TN India",
+        "gst": "33AABCG5678B1Z2"
+      },
+      "lines": [
+        {
+          "date": "2026-11-02",
+          "item": "Channa samosa",
+          "hsn": "9963",
+          "count": 20,
+          "unit": "pcs",
+          "cost": 35
+        },
+        {
+          "date": "2026-11-02",
+          "item": "Pani puri",
+          "hsn": "9963",
+          "count": 27,
+          "unit": "plate",
+          "cost": 47
+        },
+        {
+          "date": "2026-11-03",
+          "item": "Peanut salad",
+          "hsn": "9963",
+          "count": 34,
+          "unit": "cup",
+          "cost": 52
+        },
+        {
+          "date": "2026-11-03",
+          "item": "Breakfast combo",
+          "hsn": "9963",
+          "count": 41,
+          "unit": "box",
+          "cost": 280,
+          "disc": 5
+        },
+        {
+          "date": "2026-11-04",
+          "item": "Veg burger",
+          "hsn": "9963",
+          "count": 48,
+          "unit": "pcs",
+          "cost": 60
+        },
+        {
+          "date": "2026-11-04",
+          "item": "Fruit salad",
+          "hsn": "9963",
+          "count": 55,
+          "unit": "cup",
+          "cost": 60
+        },
+        {
+          "date": "2026-11-05",
+          "item": "Veg masala sandwich",
+          "hsn": "9963",
+          "count": 62,
+          "unit": "pcs",
+          "cost": 42
+        },
+        {
+          "date": "2026-11-05",
+          "item": "Mushroom samosa",
+          "hsn": "9963",
+          "count": 24,
+          "unit": "pcs",
+          "cost": 47
+        },
+        {
+          "date": "2026-11-06",
+          "item": "Gobi pakora",
+          "hsn": "9963",
+          "count": 31,
+          "unit": "plate",
+          "cost": 60
+        },
+        {
+          "date": "2026-11-06",
+          "item": "Medu vada (2) & Bonda (2)",
+          "hsn": "9963",
+          "count": 38,
+          "unit": "plate",
+          "cost": 52
+        },
+        {
+          "date": "2026-11-07",
+          "item": "Panneer puff",
+          "hsn": "9963",
+          "count": 45,
+          "unit": "pcs",
+          "cost": 60
+        },
+        {
+          "date": "2026-11-07",
+          "item": "Sambar vada",
+          "hsn": "9963",
+          "count": 52,
+          "unit": "plate",
+          "cost": 60
+        },
+        {
+          "date": "2026-11-08",
+          "item": "Paneer samosa",
+          "hsn": "9963",
+          "count": 59,
+          "unit": "pcs",
+          "cost": 45
+        },
+        {
+          "date": "2026-11-08",
+          "item": "Medu pakoda",
+          "hsn": "9963",
+          "count": 21,
+          "unit": "plate",
+          "cost": 50
+        },
+        {
+          "date": "2026-11-09",
+          "item": "Masala bonda",
+          "hsn": "9963",
+          "count": 28,
+          "unit": "plate",
+          "cost": 40
+        },
+        {
+          "date": "2026-11-09",
+          "item": "Garden fresh sandwich",
+          "hsn": "9963",
+          "count": 35,
+          "unit": "pcs",
+          "cost": 45
+        },
+        {
+          "date": "2026-11-10",
+          "item": "Spl. bun butter jam",
+          "hsn": "9963",
+          "count": 42,
+          "unit": "pcs",
+          "cost": 35
+        },
+        {
+          "date": "2026-11-10",
+          "item": "Green gram sundal",
+          "hsn": "9963",
+          "count": 49,
+          "unit": "cup",
+          "cost": 40
+        },
+        {
+          "date": "2026-11-11",
+          "item": "Set dosa",
+          "hsn": "9963",
+          "count": 56,
+          "unit": "plate",
+          "cost": 70,
+          "disc": 5
+        },
+        {
+          "date": "2026-11-11",
+          "item": "Norukkal",
+          "hsn": "9963",
+          "count": 63,
+          "unit": "plate",
+          "cost": 55
+        },
+        {
+          "date": "2026-11-12",
+          "item": "Mixed nuts",
+          "hsn": "9963",
+          "count": 25,
+          "unit": "cup",
+          "cost": 80
+        },
+        {
+          "date": "2026-11-12",
+          "item": "Palkova poli",
+          "hsn": "9963",
+          "count": 32,
+          "unit": "pcs",
+          "cost": 45
+        },
+        {
+          "date": "2026-11-13",
+          "item": "Filter coffee",
+          "hsn": "9963",
+          "count": 39,
+          "unit": "cup",
+          "cost": 25
+        },
+        {
+          "date": "2026-11-13",
+          "item": "Tea",
+          "hsn": "9963",
+          "count": 46,
+          "unit": "cup",
+          "cost": 20
+        },
+        {
+          "date": "2026-11-14",
+          "item": "Lemon juice",
+          "hsn": "9963",
+          "count": 53,
+          "unit": "cup",
+          "cost": 30
+        }
+      ],
+      "gstRate": 5,
+      "taxType": "intra",
+      "discount": 0,
       "status": "unpaid",
       "paidDate": ""
     }
