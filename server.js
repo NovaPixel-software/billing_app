@@ -51,7 +51,7 @@ function seedWorkspace(companyName) {
   return {
     settings: {
       name: companyName, address: '', phone: '', gst: '', pan: '', logo: '', themeColor: '#3b82f6',
-      prefix: 'INV-', nextNo: 1, gstRate: 5, dueDays: 10,
+      prefix: 'INV-', nextNo: 1, gstRate: 18, dueDays: 10, lineDates: false,
       bankAccount: '', ifsc: '', bankName: '', accountName: companyName,
       terms: 'Payment should be made within 10 days from the date of invoice only to the account below.',
     },

@@ -22,6 +22,8 @@ function calc(inv) {
 const isOverdue = inv => inv.status !== 'paid' && addDays(inv.date, +db.settings.dueDays || 10) < today();
 const statusOf = inv => inv.status === 'paid' ? 'paid' : isOverdue(inv) ? 'overdue' : 'unpaid';
 
+const lineDates = () => !db || db.settings.lineDates !== false;
+
 // ---------- router ----------
 function route() {
   if (!me || !db) return; // not signed in yet: the login screen is showing
@@ -305,8 +307,8 @@ function editor(id) {
     <div class="row" style="align-items:stretch">${party('billTo', 'Bill To')}${sameShip ? '' : party('shipTo', 'Ship To')}</div>
     <label style="margin-bottom:12px"><input type="checkbox" id="same" ${sameShip ? 'checked' : ''} style="width:auto"> Ship To same as Bill To</label>
     <div class="card">
-      <table class="stack lines"><tr><th style="width:130px">Date</th><th>Item</th><th class="n" style="width:90px">Count</th><th class="n" style="width:110px">Cost (₹)</th><th class="n" style="width:120px">Total</th><th style="width:40px"></th></tr>
-      ${inv.lines.map((l, i) => `<tr><td><input type="date" data-l="${i}.date" value="${l.date}"></td>
+      <table class="stack lines"><tr>${lineDates() ? '<th style="width:130px">Date</th>' : ''}<th>Item</th><th class="n" style="width:90px">Qty</th><th class="n" style="width:110px">Rate (₹)</th><th class="n" style="width:120px">Total</th><th style="width:40px"></th></tr>
+      ${inv.lines.map((l, i) => `<tr>${lineDates() ? `<td><input type="date" data-l="${i}.date" value="${l.date}"></td>` : ''}
         <td><input class="itemin" autocomplete="off" placeholder="Type or pick an item" data-l="${i}.item" value="${esc(l.item)}"></td>
         <td><input type="number" class="n" data-l="${i}.count" value="${l.count}"></td>
         <td><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}"></td>
@@ -441,8 +443,8 @@ function viewInvoice(id) {
     <div class="ttl">TAX INVOICE</div>
     <div class="meta"><div><span>Invoice No.</span><b>${esc(inv.no)}</b></div><div><span>Invoice Date</span><b>${fmtDate(inv.date)}</b></div><div><span>Payment Due</span><b>${fmtDate(due)}</b></div></div>
     <div class="parties">${party('Bill To', inv.billTo)}${party('Ship To', inv.shipTo)}</div>
-    <div class="scroll"><table class="items" style="min-width:520px"><thead><tr><th class="c" style="width:42px">S.No</th><th style="width:80px">Date</th><th>Item</th><th class="c" style="width:60px">Qty</th><th class="r" style="width:80px">Rate (₹)</th><th class="r" style="width:100px">Amount (₹)</th></tr></thead><tbody>
-    ${inv.lines.map((l, i) => `<tr><td class="c">${i + 1}</td><td>${fmtDate(l.date)}</td><td>${esc(l.item)}<small class="dt">${fmtDate(l.date)}</small></td><td class="c">${l.count}</td><td class="r">${money(l.cost)}</td><td class="r">${money(l.count * l.cost)}</td></tr>`).join('')}
+    <div class="scroll"><table class="items" style="min-width:520px"><thead><tr><th class="c" style="width:42px">S.No</th>${lineDates() ? '<th style="width:80px">Date</th>' : ''}<th>Item</th><th class="c" style="width:60px">Qty</th><th class="r" style="width:80px">Rate (₹)</th><th class="r" style="width:100px">Amount (₹)</th></tr></thead><tbody>
+    ${inv.lines.map((l, i) => `<tr><td class="c">${i + 1}</td>${lineDates() ? `<td>${fmtDate(l.date)}</td>` : ''}<td>${esc(l.item)}${lineDates() ? `<small class="dt">${fmtDate(l.date)}</small>` : ''}</td><td class="c">${l.count}</td><td class="r">${money(l.cost)}</td><td class="r">${money(l.count * l.cost)}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="lower">
       <div>
@@ -509,8 +511,8 @@ function items() {
   $app.innerHTML = `<h1>Items</h1>
   <div class="card"><h2>Add new item</h2>
     <div class="row" style="align-items:flex-end">
-      <div class="field" style="flex:2"><label>Item name *</label><input id="n_name" placeholder="e.g. Veg puff"></div>
-      <div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. 2 pcs with chutney"></div>
+      <div class="field" style="flex:2"><label>Item / service name *</label><input id="n_name" placeholder="e.g. Product or service name"></div>
+      <div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model, pack or unit"></div>
       <div class="field" style="flex:1"><label>Rate / value (₹) *</label><input id="n_rate" type="number" step="0.01" placeholder="0"></div>
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary" id="n_add">+ Add item</button></div>
     </div></div>
@@ -558,12 +560,14 @@ function settings() {
   $app.innerHTML = `<h1>Settings</h1>
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
   <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST % (CGST+SGST total)', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
+  <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>Show a date on every invoice line<br><small class="muted">Useful for daily supply bills. Switch off for normal product or service invoices.</small></span></label>
   <h2 style="margin-top:14px">Bank details</h2>${f('bankAccount', 'Account number')}${f('ifsc', 'IFSC')}${f('bankName', 'Bank name')}${f('accountName', 'Account name')}</div></div>
   ${settingsExtras()}`;
   document.querySelectorAll('[data-s]').forEach(el => el.onchange = async () => {
     const k = el.dataset.s; db.settings[k] = ['nextNo', 'gstRate', 'dueDays'].includes(k) ? +el.value : el.value; await save();
     if (k === 'name') renderChrome();
   });
+  document.getElementById('ld').onchange = async e => { db.settings.lineDates = e.target.checked; await save(); };
   settingsExtrasBind();
 }
 
@@ -718,8 +722,8 @@ async function vendors(notice) {
   $app.innerHTML = `<h1>Vendors</h1>
   <div class="card"><h2>Add a vendor</h2>
     <form id="nv"><div class="row" style="align-items:flex-end">
-      <div class="field" style="flex:2"><label>Company name *</label><input id="v_co" required placeholder="e.g. Sri Murugan Caterers"></div>
-      <div class="field"><label>Username *</label><input id="v_us" required autocapitalize="none" placeholder="e.g. murugan"></div>
+      <div class="field" style="flex:2"><label>Company name *</label><input id="v_co" required placeholder="e.g. ABC Traders"></div>
+      <div class="field"><label>Username *</label><input id="v_us" required autocapitalize="none" placeholder="e.g. abctraders"></div>
       <div class="field"><label>Password *</label><input id="v_pw" required minlength="6" value="${genPw()}"></div>
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary">+ Create vendor</button></div></div></form>
     <p class="muted" style="font-size:12px;margin:0">Share the username and password with the vendor yourself. They can change it later from Settings if they want.</p>
