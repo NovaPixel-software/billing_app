@@ -43,7 +43,7 @@ function checkPw(pw, u) {
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
 let users = readJson('users.json', null);
 let sessions = readJson('sessions.json', {});
-let brand = readJson('brand.json', { appName: 'Billing', logo: 'logo.png' });
+let brand = readJson('brand.json', { appName: 'NovaBill', logo: '' });
 const saveUsers = () => writeJson('users.json', users);
 const saveSessions = () => writeJson('sessions.json', sessions);
 
@@ -259,7 +259,7 @@ async function api(req, res, url) {
     if (url === '/api/admin/brand' && m === 'PUT') {
       const b = await readBody(req);
       if (!validLogo(b.logo)) return send(res, 400, 'Invalid logo');
-      brand = { appName: String(b.appName || 'Billing').slice(0, 60), logo: b.logo || '' };
+      brand = { appName: String(b.appName || 'NovaBill').slice(0, 60), logo: b.logo || '' };
       writeJson('brand.json', brand);
       return send(res, 200, brand);
     }

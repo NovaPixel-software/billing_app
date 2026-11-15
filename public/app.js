@@ -570,7 +570,7 @@ function settings() {
 //  Auth, vendor management, branding
 // =====================================================================
 let me = null;
-let brand = { appName: 'Billing', logo: 'logo.png' };
+let brand = { appName: 'NovaBill', logo: '' };
 let wsId = sessionStorage.getItem('ws') || '';
 const setWs = id => { wsId = id || ''; if (wsId) sessionStorage.setItem('ws', wsId); else sessionStorage.removeItem('ws'); };
 
@@ -640,7 +640,7 @@ function pickLogo(cb) {
 function renderChrome() {
   document.body.classList.remove('authless');
   const s = db ? db.settings : {};
-  document.title = (s.name || brand.appName) + ' · Billing';
+  document.title = s.name ? s.name + ' · ' + brand.appName : brand.appName;
   const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<span class="cname">${esc(s.name || 'My Company')}</span>`;
   document.getElementById('top').innerHTML = `
     <a class="brand" href="#/dashboard">${logo}</a>
@@ -659,7 +659,7 @@ async function logout() {
 
 // ---------- login / forced password change ----------
 function brandMark() {
-  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : '';
+  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : '<img src="icon.svg" alt="" width="64" height="64">';
 }
 function showLogin(msg) {
   document.body.classList.add('authless');
