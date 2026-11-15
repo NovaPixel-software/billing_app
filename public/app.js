@@ -58,6 +58,8 @@ const isOverdue = inv => inv.status !== 'paid' && addDays(inv.date, +db.settings
 const statusOf = inv => inv.status === 'paid' ? 'paid' : isOverdue(inv) ? 'overdue' : 'unpaid';
 
 const lineDates = () => !db || db.settings.lineDates !== false;
+// each invoice remembers whether its lines carry a date; older invoices follow the Settings default
+const invDates = inv => typeof inv.lineDates === 'boolean' ? inv.lineDates : lineDates();
 
 // ---------- router ----------
 function route() {
@@ -329,7 +331,7 @@ function editor(id) {
   if (!inv.taxType) inv.taxType = 'intra';
   let sameShip = JSON.stringify(inv.billTo) === JSON.stringify(inv.shipTo);
   // a column shows when it is switched on in Settings, or when this invoice already uses it
-  const LD = lineDates();
+  inv.lineDates = invDates(inv);
   const H = colOn('hsn') || inv.lines.some(l => l.hsn), U = colOn('unit') || inv.lines.some(l => l.unit);
   const G = colOn('itemGst') || inv.lines.some(hasOwnGst), D = colOn('disc') || inv.lines.some(l => +l.disc) || +inv.discount > 0;
   // other state than ours -> IGST, same state -> CGST + SGST (only when both GST numbers are known)
@@ -344,6 +346,7 @@ function editor(id) {
     <div class="field"><label>GST No.</label><input data-p="${k}.gst" value="${esc(inv[k].gst)}" placeholder="Enter GST No. (optional)"></div></div>`;
 
   const draw = () => {
+    const LD = inv.lineDates;
     $app.innerHTML = `<h1>${existing ? 'Edit invoice ' + esc(inv.no) : 'New invoice'}</h1>
     <div class="card"><div class="row">
       <div class="field"><label>Invoice No.</label><input id="no" value="${esc(inv.no)}" placeholder="Enter invoice no."></div>
@@ -352,7 +355,8 @@ function editor(id) {
       <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}" placeholder="0"></div>
       <div class="field"><label>Tax type</label><button type="button" class="sel" id="taxType"><span></span></button></div></div></div>
     <div class="row" style="align-items:stretch">${party('billTo', 'Bill To')}${sameShip ? '' : party('shipTo', 'Ship To')}</div>
-    <label style="margin-bottom:12px"><input type="checkbox" id="same" ${sameShip ? 'checked' : ''} style="width:auto"> Ship To same as Bill To</label>
+    <div class="opts"><label><input type="checkbox" id="same" ${sameShip ? 'checked' : ''}> Ship To same as Bill To</label>
+      <label><input type="checkbox" id="lnd" ${LD ? 'checked' : ''}> Show date on each item</label></div>
     <div class="card">
       <table class="stack lines2"><thead><tr>${LD ? '<th style="width:132px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:98px">HSN/SAC</th>' : ''}<th class="n" style="width:70px">Qty</th>${U ? '<th style="width:88px">Unit</th>' : ''}<th class="n" style="width:92px">Rate (₹)</th>${D ? '<th class="n" style="width:70px">Disc %</th>' : ''}${G ? '<th class="n" style="width:92px">GST %</th>' : ''}<th class="n" style="width:100px">Amount</th><th style="width:40px"></th></tr></thead><tbody>
       ${inv.lines.map((l, i) => `<tr>${LD ? `<td data-k="Date"><input type="date" data-l="${i}.date" value="${l.date || ''}"></td>` : ''}
@@ -403,6 +407,7 @@ function editor(id) {
       const c = db.customers.find(x => x.id === v); inv.customerId = v;
       if (c) { inv.billTo = { name: c.name, address: c.address, gst: c.gst }; inv.shipTo = { ...inv.billTo, address: c.shipAddress || c.address }; sameShip = !c.shipAddress || c.shipAddress === c.address; autoTax(); draw(); }
     }, { search: db.customers.length > 6 });
+    $('lnd').onchange = e => { inv.lineDates = e.target.checked; if (inv.lineDates) inv.lines.forEach(l => { if (!l.date) l.date = inv.date; }); draw(); };
     $('same').onchange = e => { sameShip = e.target.checked; if (sameShip) inv.shipTo = { ...inv.billTo }; draw(); };
     document.querySelectorAll('[data-p]').forEach(el => el.oninput = () => {
       const [k, f] = el.dataset.p.split('.'); inv[k][f] = el.value; if (sameShip && k === 'billTo') inv.shipTo[f] = el.value;
@@ -558,7 +563,7 @@ function viewInvoice(id) {
   const due = addDays(inv.date, +s.dueDays || 10);
   const roundOff = c.rounded - c.total;
   // optional columns are printed only when this invoice actually uses them
-  const LD = lineDates(), H = inv.lines.some(l => l.hsn), D = inv.lines.some(l => +l.disc), G = c.mixed || inv.lines.some(hasOwnGst);
+  const LD = invDates(inv), H = inv.lines.some(l => l.hsn), D = inv.lines.some(l => +l.disc), G = c.mixed || inv.lines.some(hasOwnGst);
   const dens = n > 18 ? ' c2' : n > 12 ? ' c1' : ''; // tighter spacing as the invoice gets longer
   const party = (t, p) => `<div class="box"><span class="k">${t}</span><b class="nm">${esc(p.name)}</b>${esc(p.address)}${p.gst ? '\nGST: <b>' + esc(p.gst) + '</b>' : ''}</div>`;
   const lbl = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#777;font-weight:600;display:block';
@@ -761,7 +766,7 @@ function settings() {
   $app.innerHTML = `<h1>Settings</h1>
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
   <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
-  <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>Show a date on every invoice line<br><small class="muted">Useful for daily supply bills. Switch off for normal product or service invoices.</small></span></label>
+  <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>New invoices show a date on each item<br><small class="muted">Default only. Each invoice can switch it on or off with “Show date on each item”, next to “Ship To same as Bill To”.</small></span></label>
   <div style="margin:2px 0 12px"><div class="muted" style="font-weight:600;font-size:13px;margin-bottom:6px">Extra invoice columns</div>${[['hsn', 'HSN / SAC code'], ['unit', 'Unit (pcs, kg, box, hrs…)'], ['itemGst', 'GST % for each item'], ['disc', 'Discount'], ['details', 'Item details note']].map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0 16px 6px 0"><input type="checkbox" data-col="${k}" ${colOn(k) ? 'checked' : ''} style="width:auto;min-height:0"> ${t}</label>`).join('')}
   <br><small class="muted">A column is printed on an invoice only when that invoice uses it.</small></div>
   <h2 style="margin-top:14px">Bank details</h2>${f('bankAccount', 'Account number')}${f('ifsc', 'IFSC')}${f('bankName', 'Bank name')}${f('accountName', 'Account name')}</div></div>
