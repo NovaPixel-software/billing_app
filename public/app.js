@@ -41,6 +41,15 @@ function calc(inv) {
   };
 }
 const UNITS = ['pcs', 'nos', 'kg', 'g', 'ltr', 'ml', 'box', 'pack', 'dozen', 'set', 'pair', 'mtr', 'sq.ft', 'hrs', 'days', 'month', 'job'];
+const TAX_TYPES = [['intra', 'CGST + SGST', 'customer in the same state'], ['inter', 'IGST', 'customer in another state']];
+// unit menu: the standard list, plus any unit this business already uses, plus "Other…" to type a new one
+function pickUnit(anchor, cur, onPick) {
+  const known = UNITS.concat(db.items.map(i => i.unit).filter(Boolean)).filter((u, i, a) => a.indexOf(u) === i);
+  openMenu(anchor, [{ v: '', t: 'No unit' }, ...known.map(u => ({ v: u, t: u })), { v: '\u0000', t: 'Other…', s: 'type your own unit' }], cur || '', v => {
+    if (v === '\u0000') { v = (prompt('Unit name (for example: roll, bag, sq.m)', '') || '').trim().slice(0, 12); if (!v) return; }
+    onPick(v);
+  }, { search: true });
+}
 const colOn = k => !db || !db.settings.cols || db.settings.cols[k] !== false; // optional invoice columns: hsn, unit, itemGst, disc
 const stateOf = g => /^\d{2}/.test(String(g || '').trim()) ? String(g).trim().slice(0, 2) : ''; // first two digits of a GSTIN = state code
 const ONE_PAGE_LINES = 25; // an invoice with up to this many lines always prints on a single A4 page
@@ -324,8 +333,9 @@ function editor(id) {
   const G = colOn('itemGst') || inv.lines.some(hasOwnGst), D = colOn('disc') || inv.lines.some(l => +l.disc) || +inv.discount > 0;
   // other state than ours -> IGST, same state -> CGST + SGST (only when both GST numbers are known)
   const autoTax = () => { const a = stateOf(s.gst), b = stateOf(inv.billTo.gst); if (a && b) inv.taxType = a === b ? 'intra' : 'inter'; };
+  const showTax = () => { const b = document.getElementById('taxType'); if (b) { b.dataset.v = inv.taxType; b.firstElementChild.textContent = (TAX_TYPES.find(t => t[0] === inv.taxType) || TAX_TYPES[0])[1]; } };
   const applyItem = (l, it) => { l.cost = it.rate; l.hsn = it.hsn || ''; l.unit = it.unit || ''; l.gst = hasOwnGst(it) ? it.gst : ''; };
-  const fillRow = (tr, l) => ['cost', 'hsn', 'unit', 'gst'].forEach(f => { const e = tr.querySelector(`[data-l$=".${f}"]`); if (e) e.value = l[f] ?? ''; });
+  const fillRow = (tr, l) => { ['cost', 'hsn', 'gst'].forEach(f => { const e = tr.querySelector(`[data-l$=".${f}"]`); if (e) e.value = l[f] ?? ''; }); const ub = tr.querySelector('[data-lu]'); if (ub) ub.firstElementChild.textContent = l.unit || '—'; };
 
   const party = (k, title) => `<div class="card" style="flex:1;min-width:260px"><h2>${title}</h2>
     <div class="field"><label>Name</label><input data-p="${k}.name" value="${esc(inv[k].name)}"></div>
@@ -339,17 +349,16 @@ function editor(id) {
       <div class="field"><label>Date</label><input id="date" type="date" value="${inv.date}"></div>
       <div class="field"><label>Customer (autofill)</label><button class="sel" id="cust" type="button"><span>${esc((db.customers.find(c => c.id === inv.customerId) || {}).name || '— choose customer —')}</span></button></div>
       <div class="field"><label>GST % (${G ? 'default for items' : 'total'})</label><input id="gstRate" type="number" step="0.01" min="0" value="${inv.gstRate}"></div>
-      <div class="field"><label>Tax type</label><select id="taxType"><option value="intra">CGST + SGST (same state)</option><option value="inter">IGST (other state)</option></select></div></div></div>
+      <div class="field"><label>Tax type</label><button type="button" class="sel" id="taxType"><span></span></button></div></div></div>
     <div class="row" style="align-items:stretch">${party('billTo', 'Bill To')}${sameShip ? '' : party('shipTo', 'Ship To')}</div>
     <label style="margin-bottom:12px"><input type="checkbox" id="same" ${sameShip ? 'checked' : ''} style="width:auto"> Ship To same as Bill To</label>
     <div class="card">
-      <datalist id="units">${UNITS.map(u => `<option value="${u}"></option>`).join('')}</datalist>
       <table class="stack lines2"><thead><tr>${LD ? '<th style="width:132px">Date</th>' : ''}<th>Item</th>${H ? '<th style="width:92px">HSN/SAC</th>' : ''}<th class="n" style="width:70px">Qty</th>${U ? '<th style="width:88px">Unit</th>' : ''}<th class="n" style="width:92px">Rate (₹)</th>${D ? '<th class="n" style="width:68px">Disc %</th>' : ''}${G ? '<th class="n" style="width:68px">GST %</th>' : ''}<th class="n" style="width:100px">Amount</th><th style="width:40px"></th></tr></thead><tbody>
       ${inv.lines.map((l, i) => `<tr>${LD ? `<td data-k="Date"><input type="date" data-l="${i}.date" value="${l.date || ''}"></td>` : ''}
         <td data-k="Item" class="c-item"><input class="itemin" autocomplete="off" placeholder="Type or pick an item" data-l="${i}.item" value="${esc(l.item)}"></td>
         ${H ? `<td data-k="HSN/SAC"><input data-l="${i}.hsn" value="${esc(l.hsn || '')}" placeholder="—"></td>` : ''}
         <td data-k="Qty"><input type="number" class="n" step="any" data-l="${i}.count" value="${l.count}"></td>
-        ${U ? `<td data-k="Unit"><input list="units" autocomplete="off" data-l="${i}.unit" value="${esc(l.unit || '')}" placeholder="pcs"></td>` : ''}
+        ${U ? `<td data-k="Unit"><button type="button" class="sel" data-lu="${i}"><span>${esc(l.unit || '—')}</span></button></td>` : ''}
         <td data-k="Rate (₹)"><input type="number" class="n" step="0.01" data-l="${i}.cost" value="${l.cost}"></td>
         ${D ? `<td data-k="Disc %"><input type="number" class="n" step="0.01" min="0" max="100" data-l="${i}.disc" value="${+l.disc || ''}" placeholder="0"></td>` : ''}
         ${G ? `<td data-k="GST %"><input type="number" class="n" step="0.01" min="0" data-l="${i}.gst" value="${hasOwnGst(l) ? l.gst : ''}" placeholder="${num(inv.gstRate)}"></td>` : ''}
@@ -386,8 +395,9 @@ function editor(id) {
     $('no').oninput = e => inv.no = e.target.value;
     $('date').oninput = e => inv.date = e.target.value;
     $('gstRate').oninput = e => { inv.gstRate = +e.target.value; totals(); };
-    $('taxType').value = inv.taxType;
-    $('taxType').onchange = e => { inv.taxType = e.target.value; totals(); };
+    showTax();
+    $('taxType').onclick = e => openMenu(e.currentTarget, TAX_TYPES.map(([v, t, d]) => ({ v, t, s: d })), inv.taxType, v => { inv.taxType = v; showTax(); totals(); });
+    document.querySelectorAll('[data-lu]').forEach(b => b.onclick = () => pickUnit(b, inv.lines[+b.dataset.lu].unit, v => { inv.lines[+b.dataset.lu].unit = v; b.firstElementChild.textContent = v || '—'; }));
     if ($('disc')) $('disc').oninput = e => { inv.discount = e.target.value; totals(); };
     $('cust').onclick = e => openMenu(e.currentTarget, db.customers.map(c => ({ v: c.id, t: c.name, s: (c.address || '').split('\n')[0] })), inv.customerId, v => {
       const c = db.customers.find(x => x.id === v); inv.customerId = v;
@@ -396,7 +406,7 @@ function editor(id) {
     $('same').onchange = e => { sameShip = e.target.checked; if (sameShip) inv.shipTo = { ...inv.billTo }; draw(); };
     document.querySelectorAll('[data-p]').forEach(el => el.oninput = () => {
       const [k, f] = el.dataset.p.split('.'); inv[k][f] = el.value; if (sameShip && k === 'billTo') inv.shipTo[f] = el.value;
-      if (k === 'billTo' && f === 'gst') { autoTax(); $('taxType').value = inv.taxType; totals(); }
+      if (k === 'billTo' && f === 'gst') { autoTax(); showTax(); totals(); }
     });
     document.querySelectorAll('[data-l]').forEach(el => el.oninput = () => {
       const [i, f] = el.dataset.l.split('.'); const l = inv.lines[+i]; l[f] = el.value;
@@ -628,22 +638,21 @@ function itemStats() {
 function items() {
   let q = '';
   const stats = itemStats();
-  const H = colOn('hsn'), U = colOn('unit'), G = colOn('itemGst');
-  const cols = 6 + H + U + G;
+  const Dt = colOn('details'), H = colOn('hsn'), U = colOn('unit'), G = colOn('itemGst');
+  const cols = 5 + Dt + H + U + G;
   $app.innerHTML = `<h1>Items</h1>
-  <datalist id="units">${UNITS.map(u => `<option value="${u}"></option>`).join('')}</datalist>
   <div class="card"><h2>Add new item</h2>
     <div class="row tight" style="align-items:flex-end">
       <div class="field" style="flex:3"><label>Item / service name *</label><input id="n_name" placeholder="e.g. Product or service name"></div>
-      <div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model or pack"></div>
+      ${Dt ? '<div class="field" style="flex:3"><label>Details (optional)</label><input id="n_det" placeholder="e.g. size, model or pack"></div>' : ''}
       ${H ? '<div class="field" style="flex:1.2"><label>HSN / SAC</label><input id="n_hsn" placeholder="optional"></div>' : ''}
-      ${U ? '<div class="field" style="flex:1"><label>Unit</label><input id="n_unit" list="units" autocomplete="off" placeholder="pcs"></div>' : ''}
+      ${U ? '<div class="field" style="flex:1.1"><label>Unit</label><button type="button" class="sel" id="n_unit" data-v=""><span class="muted">Select</span></button></div>' : ''}
       <div class="field" style="flex:1.2"><label>Rate (₹) *</label><input id="n_rate" type="number" step="0.01" placeholder="0"></div>
       ${G ? `<div class="field" style="flex:1"><label>GST %</label><input id="n_gst" type="number" step="0.01" min="0" placeholder="${num(db.settings.gstRate)}"></div>` : ''}
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary" id="n_add">+ Add item</button></div>
     </div></div>
   <div class="toolbar"><input id="q" placeholder="Search items…"><span class="muted" id="cnt"></span></div>
-  <div class="card"><table class="stack itemsT2"><thead><tr><th style="width:26%">Item</th><th>Details</th>${H ? '<th style="width:110px">HSN / SAC</th>' : ''}${U ? '<th style="width:90px">Unit</th>' : ''}<th class="n" style="width:110px">Rate (₹)</th>${G ? '<th class="n" style="width:84px">GST %</th>' : ''}<th class="n" style="width:84px">Qty sold</th><th class="n" style="width:110px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
+  <div class="card"><table class="stack itemsT2"><thead><tr><th${Dt ? ' style="width:23%"' : ''}>Item</th>${Dt ? '<th>Details</th>' : ''}${H ? '<th style="width:96px">HSN / SAC</th>' : ''}${U ? '<th style="width:94px">Unit</th>' : ''}<th class="n" style="width:96px">Rate (₹)</th>${G ? '<th class="n" style="width:74px">GST %</th>' : ''}<th class="n" style="width:78px">Qty sold</th><th class="n" style="width:100px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
   <p class="muted" style="margin:10px 0 0;font-size:12px">Changes here only affect new invoices. Old invoices keep the rate, unit and GST they were billed with.${G ? ' Leave GST % empty to use the default GST rate of the invoice.' : ''}</p></div>`;
   const draw = () => {
     const list = db.items.filter(i => (i.name + ' ' + (i.details || '') + ' ' + (i.hsn || '')).toLowerCase().includes(q.toLowerCase()));
@@ -651,9 +660,9 @@ function items() {
     document.getElementById('rows').innerHTML = list.map(it => {
       const s = stats[it.name] || { qty: 0, amt: 0 };
       return `<tr><td data-k="Item" class="c-item"><input data-i="${it.id}.name" value="${esc(it.name)}"></td>
-      <td data-k="Details" class="c-det"><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="—"></td>
+      ${Dt ? `<td data-k="Details" class="c-det"><input data-i="${it.id}.details" value="${esc(it.details || '')}" placeholder="—"></td>` : ''}
       ${H ? `<td data-k="HSN / SAC"><input data-i="${it.id}.hsn" value="${esc(it.hsn || '')}" placeholder="—"></td>` : ''}
-      ${U ? `<td data-k="Unit"><input data-i="${it.id}.unit" list="units" autocomplete="off" value="${esc(it.unit || '')}" placeholder="—"></td>` : ''}
+      ${U ? `<td data-k="Unit"><button type="button" class="sel" data-iu="${it.id}"><span>${esc(it.unit || '—')}</span></button></td>` : ''}
       <td data-k="Rate (₹)"><input type="number" step="0.01" class="n" data-i="${it.id}.rate" value="${it.rate}"></td>
       ${G ? `<td data-k="GST %"><input type="number" step="0.01" min="0" class="n" data-i="${it.id}.gst" value="${hasOwnGst(it) ? it.gst : ''}" placeholder="${num(db.settings.gstRate)}"></td>` : ''}
       <td data-k="Qty sold" class="n c-stat">${money0(s.qty)}</td><td data-k="Sales" class="n c-stat">₹${money0(s.amt)}</td>
@@ -664,6 +673,7 @@ function items() {
       if (f === 'name' && !el.value.trim()) { el.value = it.name; return; }
       it[f] = f === 'rate' ? +el.value : f === 'gst' ? (el.value === '' ? '' : Math.max(0, +el.value || 0)) : el.value.trim(); await save();
     });
+    document.querySelectorAll('[data-iu]').forEach(b => b.onclick = () => { const it = db.items.find(c => c.id === b.dataset.iu); pickUnit(b, it.unit, async v => { it.unit = v; b.firstElementChild.textContent = v || '—'; await save(); }); });
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const it = db.items.find(c => c.id === b.dataset.del);
       if (!confirm(`Delete "${it.name}"? Old invoices are not affected.`)) return;
@@ -671,13 +681,15 @@ function items() {
     });
   };
   document.getElementById('q').oninput = e => { q = e.target.value; draw(); };
+  const nu = document.getElementById('n_unit');
+  if (nu) nu.onclick = () => pickUnit(nu, nu.dataset.v, v => { nu.dataset.v = v; nu.firstElementChild.textContent = v || 'Select'; nu.firstElementChild.className = v ? '' : 'muted'; });
   document.getElementById('n_add').onclick = async () => {
     const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
     const name = val('n_name'), rate = val('n_rate'), gst = val('n_gst');
     if (!name) return alert('Item name is required');
     if (rate === '' || isNaN(+rate)) return alert('Enter the rate for this item');
     if (db.items.some(i => i.name.toLowerCase() === name.toLowerCase())) return alert('This item already exists');
-    db.items.push({ id: uid('i'), name, details: val('n_det'), hsn: val('n_hsn'), unit: val('n_unit'), rate: +rate, gst: gst === '' ? '' : Math.max(0, +gst || 0) });
+    db.items.push({ id: uid('i'), name, details: val('n_det'), hsn: val('n_hsn'), unit: nu ? nu.dataset.v : '', rate: +rate, gst: gst === '' ? '' : Math.max(0, +gst || 0) });
     await save(); items();
   };
   draw();
@@ -691,7 +703,7 @@ function settings() {
   <div class="grid g2"><div class="card"><h2>Business (invoice header)</h2>${f('name', 'Business name')}${f('address', 'Address', 'area')}${f('phone', 'Phone')}${f('gst', 'GST No.')}${f('pan', 'PAN')}</div>
   <div class="card"><h2>Invoice numbering & tax</h2>${f('prefix', 'Invoice prefix')}${f('nextNo', 'Next invoice number', 'number')}${f('gstRate', 'Default GST %', 'number')}${f('dueDays', 'Payment due (days)', 'number')}${f('terms', 'Payment term (line 1)', 'area')}
   <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:4px 0 10px"><input type="checkbox" id="ld" ${lineDates() ? 'checked' : ''} style="width:auto;min-height:0;margin-top:3px"> <span>Show a date on every invoice line<br><small class="muted">Useful for daily supply bills. Switch off for normal product or service invoices.</small></span></label>
-  <div style="margin:2px 0 12px"><div class="muted" style="font-weight:600;font-size:13px;margin-bottom:6px">Extra invoice columns</div>${[['hsn', 'HSN / SAC code'], ['unit', 'Unit (pcs, kg, box, hrs…)'], ['itemGst', 'GST % for each item'], ['disc', 'Discount']].map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0 16px 6px 0"><input type="checkbox" data-col="${k}" ${colOn(k) ? 'checked' : ''} style="width:auto;min-height:0"> ${t}</label>`).join('')}
+  <div style="margin:2px 0 12px"><div class="muted" style="font-weight:600;font-size:13px;margin-bottom:6px">Extra invoice columns</div>${[['hsn', 'HSN / SAC code'], ['unit', 'Unit (pcs, kg, box, hrs…)'], ['itemGst', 'GST % for each item'], ['disc', 'Discount'], ['details', 'Item details note']].map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0 16px 6px 0"><input type="checkbox" data-col="${k}" ${colOn(k) ? 'checked' : ''} style="width:auto;min-height:0"> ${t}</label>`).join('')}
   <br><small class="muted">A column is printed on an invoice only when that invoice uses it.</small></div>
   <h2 style="margin-top:14px">Bank details</h2>${f('bankAccount', 'Account number')}${f('ifsc', 'IFSC')}${f('bankName', 'Bank name')}${f('accountName', 'Account name')}</div></div>
   ${settingsExtras()}`;
