@@ -46,6 +46,12 @@ let sessions = readJson('sessions.json', {});
 let brand = readJson('brand.json', { appName: 'NovaBill', logo: '' });
 const saveUsers = () => writeJson('users.json', users);
 const saveSessions = () => writeJson('sessions.json', sessions);
+// Vercel demo: each request may land on a fresh server copy that never saw the login, so the session
+// is a signed token (username + expiry) instead of an entry in sessions.json, and seeded ids are fixed.
+const DEMO_KEY = DEMO ? (process.env.SESSION_SECRET || sha('novabill-demo|' + (process.env.VERCEL_PROJECT_ID || '') + '|' + (process.env.VERCEL_GIT_REPO_ID || ''))) : '';
+const demoId = name => sha('demo-user|' + name).slice(0, 12);
+const sign = s => crypto.createHmac('sha256', DEMO_KEY).update(s).digest('hex');
+const demoToken = u => { const b = Buffer.from(u.username).toString('base64url') + '.' + (Date.now() + SESSION_DAYS * 864e5); return 'd.' + b + '.' + sign(b); };
 
 function seedWorkspace(companyName) {
   return {
@@ -61,7 +67,7 @@ function seedWorkspace(companyName) {
 
 // First run: create admin; move the old single-user data.json into the admin workspace.
 if (!users) {
-  const id = newId();
+  const id = DEMO ? demoId('admin') : newId();
   users = [{ id, username: 'admin', name: 'Administrator', role: 'admin', ...hashPw('admin123'), active: true, mustChange: !DEMO, createdAt: new Date().toISOString() }];
   saveUsers();
   const old = path.join(ROOT, 'data.json');
@@ -79,7 +85,7 @@ if (!users) {
 // Default vendor: if there is no vendor yet, create one so the admin can try the flow straight away.
 if (!users.some(u => u.role === 'vendor')) {
   let dws; try { dws = JSON.parse(fs.readFileSync(path.join(__dirname, 'default_vendor.json'), 'utf8')); } catch { dws = seedWorkspace('Demo Vendor'); }
-  const v = { id: newId(), username: 'vendor1', name: dws.settings.name, role: 'vendor', ...hashPw('vendor123'), active: true, mustChange: false, createdAt: new Date().toISOString() };
+  const v = { id: DEMO ? demoId('vendor1') : newId(), username: 'vendor1', name: dws.settings.name, role: 'vendor', ...hashPw('vendor123'), active: true, mustChange: false, createdAt: new Date().toISOString() };
   users.push(v); saveUsers();
   writeJson('ws_' + v.id + '.json', dws);
   console.log('Default vendor created -> username: vendor1  password: vendor123');
@@ -110,6 +116,13 @@ function readBody(req, limit = 6e6) {
 }
 function sessionUser(req) {
   const t = parseCookies(req).sid; if (!t) return null;
+  if (DEMO && t.startsWith('d.')) {
+    const [, b, exp, mac] = t.split('.'), body = b + '.' + exp;
+    if (!mac || mac.length !== 64 || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(sign(body))) || +exp < Date.now()) return null;
+    const name = Buffer.from(b, 'base64url').toString();
+    const u = users.find(x => x.username === name);
+    return u && u.active ? u : null;
+  }
   const s = sessions[sha(t)];
   if (!s || s.exp < Date.now()) return null;
   const u = users.find(x => x.id === s.uid);
@@ -160,7 +173,7 @@ async function api(req, res, url) {
     const u = users.find(x => x.username.toLowerCase() === uname);
     if (!u || !u.active || !checkPw(b.password || '', u)) { noteFail(key); return send(res, 401, 'Wrong username or password'); }
     delete fails[key];
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = DEMO ? demoToken(u) : crypto.randomBytes(32).toString('hex');
     Object.keys(sessions).forEach(k => { if (sessions[k].exp < Date.now()) delete sessions[k]; });
     sessions[sha(token)] = { uid: u.id, exp: Date.now() + SESSION_DAYS * 864e5 };
     saveSessions();
@@ -276,7 +289,12 @@ async function api(req, res, url) {
 
 // ---------- server ----------
 async function handler(req, res) {
-  const url = req.url.split('?')[0];
+  let url = req.url.split('?')[0];
+  // On Vercel every /api/* call is rewritten to /api/index?__p=<rest>; put the real path back.
+  if (url === '/api/index' || url === '/api/index.js') {
+    const p = new URLSearchParams(req.url.split('?')[1] || '').get('__p');
+    if (p) url = '/api/' + p.replace(/^\/+/, '');
+  }
   try {
     if (url.startsWith('/api/')) return await api(req, res, url);
   } catch (e) { return send(res, e.message === 'too large' ? 413 : 400, e.message || 'error'); }
