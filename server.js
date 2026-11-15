@@ -10,7 +10,10 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3008;
 const ROOT = __dirname;
-const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
+// On Vercel (demo hosting) only /tmp is writable and it is wiped whenever the function restarts,
+// so the demo starts again from the sample data. A normal server keeps its data in ./data.
+const DEMO = !!process.env.VERCEL;
+const DATA = process.env.DATA_DIR || (DEMO ? '/tmp/billing-data' : path.join(ROOT, 'data'));
 const PUB = path.join(ROOT, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 const SESSION_DAYS = 30;
@@ -59,7 +62,7 @@ function seedWorkspace(companyName) {
 // First run: create admin; move the old single-user data.json into the admin workspace.
 if (!users) {
   const id = newId();
-  users = [{ id, username: 'admin', name: 'Administrator', role: 'admin', ...hashPw('admin123'), active: true, mustChange: true, createdAt: new Date().toISOString() }];
+  users = [{ id, username: 'admin', name: 'Administrator', role: 'admin', ...hashPw('admin123'), active: true, mustChange: !DEMO, createdAt: new Date().toISOString() }];
   saveUsers();
   const old = path.join(ROOT, 'data.json');
   let ws;
@@ -98,6 +101,8 @@ function send(res, code, body, headers = {}) {
 }
 function readBody(req, limit = 6e6) {
   return new Promise((resolve, reject) => {
+    // Vercel has already read and parsed the JSON body before calling us.
+    if (DEMO) { try { if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return resolve(req.body); } catch { return reject(new Error('bad json')); } }
     let b = ''; let n = 0;
     req.on('data', c => { n += c.length; if (n > limit) { reject(new Error('too large')); req.destroy(); } else b += c; });
     req.on('end', () => { try { resolve(b ? JSON.parse(b) : {}); } catch { reject(new Error('bad json')); } });
@@ -143,7 +148,7 @@ async function api(req, res, url) {
   if (url === '/api/login' && m === 'POST') {
     const b = await readBody(req, 1e4);
     const uname = String(b.username || '').trim().toLowerCase();
-    const key = req.socket.remoteAddress + '|' + uname;
+    const key = ((req.socket && req.socket.remoteAddress) || '') + '|' + uname;
     if (throttled(key)) return send(res, 429, 'Too many attempts. Try again in a minute.');
     const u = users.find(x => x.username.toLowerCase() === uname);
     if (!u || !u.active || !checkPw(b.password || '', u)) { noteFail(key); return send(res, 401, 'Wrong username or password'); }
@@ -263,7 +268,7 @@ async function api(req, res, url) {
 }
 
 // ---------- server ----------
-http.createServer(async (req, res) => {
+async function handler(req, res) {
   const url = req.url.split('?')[0];
   try {
     if (url.startsWith('/api/')) return await api(req, res, url);
@@ -275,4 +280,8 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
     res.end(buf);
   });
-}).listen(PORT, () => console.log(`Billing app running: http://localhost:${PORT}`));
+}
+
+// Run directly (node server.js / start.bat) -> normal server. Loaded by api/index.js on Vercel -> just the handler.
+if (require.main === module) http.createServer(handler).listen(PORT, () => console.log(`Billing app running: http://localhost:${PORT}`));
+module.exports = handler;
