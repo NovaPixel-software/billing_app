@@ -520,6 +520,37 @@ function fitPaper() {
 }
 window.addEventListener('beforeprint', fitPaper);
 
+// Downloads the invoice / menu on screen as a PDF file, laid out exactly like the printed page.
+let pdfLib;
+const loadPdfLib = () => pdfLib || (pdfLib = new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'vendor/html2pdf.bundle.min.js'; sc.onload = ok; sc.onerror = () => { pdfLib = null; no(new Error('load')); }; document.head.appendChild(sc); }));
+async function downloadPdf(btn, name) {
+  const p = document.querySelector('.paper'); if (!p || btn.disabled) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    await loadPdfLib();
+    fitPaper();
+    const fit = parseFloat(p.style.getPropertyValue('--fit')) || 1, file = name.replace(/[^\w .&()-]+/g, '-').trim() + '.pdf';
+    document.body.classList.add('measuring'); p.style.width = (186 / fit) + 'mm';
+    // a shrunk invoice is drawn on a proportionally larger sheet, then placed on a true A4 page
+    const w = html2pdf().set({
+      margin: 12 / fit, filename: file, image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: Math.min(3, 2 / fit), useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+      jsPDF: { unit: 'mm', format: [210 / fit, 297 / fit], orientation: 'portrait' },
+      pagebreak: { mode: ['css'], avoid: ['tr', '.mi', '.lower', '.terms', '.thanks'] }
+    }).from(p);
+    if (fit === 1) await w.save();
+    else {
+      const cv = await w.toCanvas().get('canvas'), pdf = await w.toPdf().get('pdf');
+      const old = pdf.getNumberOfPages();
+      pdf.addPage('a4', 'portrait');
+      pdf.addImage(cv.toDataURL('image/jpeg', 0.95), 'JPEG', 12, 12, 186, Math.min(273, cv.height * 186 / cv.width));
+      for (let k = old; k >= 1; k--) pdf.deletePage(k);
+      pdf.save(file);
+    }
+  } catch (e) { console.error('pdf', e); alert('Could not make the PDF. Use Print and choose "Save as PDF" instead.'); }
+  finally { p.style.width = ''; document.body.classList.remove('measuring'); btn.disabled = false; btn.textContent = label; }
+}
+
 function viewInvoice(id) {
   const inv = db.invoices.find(i => i.id === id);
   if (!inv) { location.hash = '#/invoices'; return; }
@@ -544,7 +575,8 @@ function viewInvoice(id) {
   tot += tr('INVOICE TOTAL', '₹ ' + money0(c.rounded), 'grand');
   $app.innerHTML = `
   <div class="actions no-print">
-    <button class="btn primary" id="print">Print / Save as PDF</button>
+    <button class="btn primary" id="dl">Download PDF</button>
+    <button class="btn" id="print">Print</button>
     <a class="btn" href="#/edit/${inv.id}">Edit</a>
     <button class="btn" id="pay">${inv.status === 'paid' ? 'Mark unpaid' : 'Mark as paid'}</button>
     <button class="btn danger" id="del">Delete</button>
@@ -576,6 +608,7 @@ function viewInvoice(id) {
   fitPaper();
   const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
   document.getElementById('print').onclick = () => { fitPaper(); window.print(); };
+  document.getElementById('dl').onclick = e => downloadPdf(e.currentTarget, 'Invoice ' + inv.no);
   document.getElementById('pay').onclick = async () => {
     if (inv.status === 'paid') { inv.status = 'unpaid'; inv.paidDate = ''; }
     else { inv.status = 'paid'; inv.paidDate = prompt('Payment date (YYYY-MM-DD)', today()) || today(); }
@@ -701,7 +734,8 @@ function itemMenu() {
   const two = list.length > 12;
   $app.innerHTML = `
   <div class="actions no-print">
-    <button class="btn primary" id="print">Print / Save as PDF</button>
+    <button class="btn primary" id="dl">Download PDF</button>
+    <button class="btn" id="print">Print</button>
     <input id="m_title" value="${esc(s.menuTitle || 'Menu')}" placeholder="Enter title" maxlength="40" style="max-width:220px">
     <a class="btn" href="#/items" style="margin-left:auto">← Back</a></div>
   <div class="paper menu" data-lines="${list.length > 80 ? 99 : 0}" style="${paperVars()}">
@@ -714,6 +748,7 @@ function itemMenu() {
   fitPaper();
   const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
   document.getElementById('print').onclick = () => { fitPaper(); window.print(); };
+  document.getElementById('dl').onclick = e => downloadPdf(e.currentTarget, (s.menuTitle || 'Menu') + ' - ' + s.name);
   document.getElementById('m_title').oninput = e => { document.getElementById('m_ttl').textContent = e.target.value.trim() || 'Menu'; };
   document.getElementById('m_title').onchange = async e => { s.menuTitle = e.target.value.trim() || 'Menu'; await save(); };
 }
