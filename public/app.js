@@ -649,7 +649,6 @@ function viewInvoice(id) {
       </div>
       <div>
         <table class="tot">${tot}</table>
-        <div class="sign"><div class="line"></div>For ${esc(s.name)}<br><span style="color:#777">Authorised Signatory</span></div>
       </div>
     </div>
     <div class="terms"><b>Terms &amp; conditions:</b> ${esc(s.terms)}</div>

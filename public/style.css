@@ -622,3 +622,6 @@ body.measuring .paper.menu .mlist.two{grid-template-columns:1fr 1fr}
 .dcol>.card{margin:0}
 .dcol>.card:last-child{flex:1}
 @media (max-width:900px){.dcols{grid-template-columns:1fr}}
+
+/* printed invoice: keep "S.No" on one line */
+.paper .items th.c-sno{white-space:nowrap;overflow-wrap:normal;padding-left:4px;padding-right:4px}
