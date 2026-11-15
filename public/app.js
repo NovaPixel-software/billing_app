@@ -646,7 +646,7 @@ function renderChrome() {
   document.body.classList.remove('authless');
   const s = db ? db.settings : {};
   document.title = s.name ? s.name + ' · ' + brand.appName : brand.appName;
-  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<img class="appicon" src="icon.svg" alt=""><span class="cname">${esc(s.name || 'My Company')}</span>`;
+  const logo = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<img class="appicon" src="icon.png" alt=""><span class="cname">${esc(s.name || 'My Company')}</span>`;
   document.getElementById('top').innerHTML = `
     <a class="brand" href="#/dashboard">${logo}</a>
     <nav id="nav"><a href="#/dashboard">Dashboard</a><a href="#/invoices">Invoices</a><a href="#/customers">Customers</a><a href="#/items">Items</a><a href="#/settings">Settings</a>${me.role === 'admin' ? '<a href="#/vendors">Vendors</a>' : ''}</nav>
@@ -664,21 +664,41 @@ async function logout() {
 
 // ---------- login / forced password change ----------
 function brandMark() {
-  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : '<img class="appicon" src="icon.svg" alt="">';
+  return brand.logo ? `<img src="${esc(brand.logo)}" alt="" style="max-height:80px;max-width:100%">` : brand.appName === 'NovaBill' ? '<img class="applogo" src="novabill-logo.png" alt="NovaBill">' : '<img class="appicon" src="icon.png" alt="">';
 }
 function showLogin(msg) {
   document.body.classList.add('authless');
   document.getElementById('top').innerHTML = '';
   document.getElementById('banner').innerHTML = '';
   document.title = brand.appName + ' · Sign in';
-  $app.innerHTML = `<form class="card login" id="lf" autocomplete="on">
-    <div class="lg">${brandMark()}</div><h1 class="wm">${brand.appName === 'NovaBill' ? 'Nova<b>Bill</b>' : esc(brand.appName)}</h1>
-    <p class="muted" style="text-align:center;margin:0 0 16px">Sign in to continue</p>
-    <div class="field"><label>Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required autofocus></div>
-    <div class="field"><label>Password</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
-    <div id="err" class="err">${esc(msg || '')}</div>
-    <button class="btn primary" style="width:100%" id="go">Sign in</button>
-    <label style="margin:12px 0 0;font-weight:400"><input type="checkbox" id="show" style="width:auto;min-height:0"> Show password</label></form>`;
+  const own = !brand.logo && brand.appName === 'NovaBill';
+  $app.innerHTML = `<div class="auth">
+    <aside class="auth-side" aria-hidden="true">
+      <div class="auth-bars"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="auth-copy">
+        <p class="auth-tag">Invoice. Analyze. Grow.</p>
+        <h2>Billing made simple for every business.</h2>
+        <ul>
+          <li><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.500 4.500L19 7.500"/></svg>GST invoices ready in under a minute</li>
+          <li><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.500 4.500L19 7.500"/></svg>See who has paid and who has not</li>
+          <li><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.500 4.500L19 7.500"/></svg>Sales by month, customer and item</li>
+          <li><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.500 4.500L19 7.500"/></svg>Works on your phone and your computer</li>
+        </ul>
+      </div>
+    </aside>
+    <section class="auth-main">
+      <form class="login2" id="lf" autocomplete="on">
+        <div class="lg">${brandMark()}</div>${own ? '' : `<h1 class="wm">${esc(brand.appName)}</h1>`}
+        <h2 class="auth-h">Welcome back</h2>
+        <p class="muted auth-sub">Sign in to your account to continue</p>
+        <div class="field"><label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" required autofocus></div>
+        <div class="field"><label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>
+        <label class="auth-show"><input type="checkbox" id="show"> Show password</label>
+        <div id="err" class="err">${esc(msg || '')}</div>
+        <button class="btn primary" id="go">Sign in</button>
+        <p class="auth-foot">Forgot your password? Ask your administrator to reset it.</p>
+      </form>
+    </section></div>`;
   document.getElementById('show').onchange = e => document.getElementById('p').type = e.target.checked ? 'text' : 'password';
   document.getElementById('lf').onsubmit = async e => {
     e.preventDefault();
@@ -737,7 +757,7 @@ async function vendors(notice) {
   <div class="card"><h2>Login page branding</h2>
     <div class="row" style="align-items:center">
       <div class="field"><label>App name</label><input id="b_name" value="${esc(brand.appName)}"></div>
-      <div style="flex:0 0 200px;min-width:0"><div class="logoprev">${bl ? `<img src="${esc(bl)}" alt="">` : '<img src="icon.svg" alt="" style="height:56px"><span class="muted" style="margin-left:10px;font-size:12px">Default icon</span>'}</div></div>
+      <div style="flex:0 0 200px;min-width:0"><div class="logoprev">${bl ? `<img src="${esc(bl)}" alt="">` : '<img src="icon.png" alt="" style="height:56px"><span class="muted" style="margin-left:10px;font-size:12px">Default icon</span>'}</div></div>
       <div><button class="btn" id="b_up">Upload logo</button> <button class="btn" id="b_rm">Remove</button></div></div>
     <div style="margin-top:12px"><button class="btn primary" id="b_save">Save branding</button></div></div>`;
   const reload = n => vendors(n);
