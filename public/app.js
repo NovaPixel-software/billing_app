@@ -64,8 +64,8 @@ function route() {
   if (!me || !db) return; // not signed in yet: the login screen is showing
   const h = location.hash.replace(/^#\/?/, '') || 'dashboard';
   const [page, arg] = h.split('/');
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#/' + page));
-  const views = { dashboard, invoices, new: () => editor(), edit: () => editor(arg), view: () => viewInvoice(arg), customers, items, settings, vendors };
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#/' + (page === 'menu' ? 'items' : page)));
+  const views = { dashboard, invoices, new: () => editor(), edit: () => editor(arg), view: () => viewInvoice(arg), customers, items, menu: itemMenu, settings, vendors };
   (views[page] || dashboard)();
   window.scrollTo(0, 0);
 }
@@ -651,7 +651,7 @@ function items() {
       ${G ? `<div class="field" style="flex:1"><label>GST %</label><input id="n_gst" type="number" step="0.01" min="0" placeholder="Optional"></div>` : ''}
       <div class="field" style="flex:0 0 auto;min-width:0"><button class="btn primary" id="n_add">+ Add item</button></div>
     </div></div>
-  <div class="toolbar"><input id="q" placeholder="Search items"><span class="muted" id="cnt"></span></div>
+  <div class="toolbar"><input id="q" placeholder="Search items"><span class="muted" id="cnt"></span><a class="btn" href="#/menu" id="menuBtn" style="margin-left:auto">Menu / Price list PDF</a></div>
   <div class="card"><table class="stack itemsT2"><thead><tr><th${Dt ? ' style="width:23%"' : ''}>Item</th>${Dt ? '<th>Details</th>' : ''}${H ? '<th style="width:96px">HSN / SAC</th>' : ''}${U ? '<th style="width:94px">Unit</th>' : ''}<th class="n" style="width:96px">Rate (₹)</th>${G ? '<th class="n" style="width:92px">GST %</th>' : ''}<th class="n" style="width:78px">Qty sold</th><th class="n" style="width:100px">Sales (₹)</th><th style="width:80px"></th></tr></thead><tbody id="rows"></tbody></table>
   <p class="muted" style="margin:10px 0 0;font-size:12px">Changes here only affect new invoices. Old invoices keep the rate, unit and GST they were billed with.${G ? ' If GST % is left empty, the default GST rate of the invoice is used.' : ''}</p></div>`;
   const draw = () => {
@@ -693,6 +693,29 @@ function items() {
     await save(); items();
   };
   draw();
+}
+
+// ---------- items as a printable menu / price list ----------
+function itemMenu() {
+  const s = db.settings, list = db.items.filter(i => i.name);
+  const two = list.length > 12;
+  $app.innerHTML = `
+  <div class="actions no-print">
+    <button class="btn primary" id="print">Print / Save as PDF</button>
+    <input id="m_title" value="${esc(s.menuTitle || 'Menu')}" placeholder="Enter title" maxlength="40" style="max-width:220px">
+    <a class="btn" href="#/items" style="margin-left:auto">← Back</a></div>
+  <div class="paper menu" data-lines="${list.length > 80 ? 99 : 0}" style="${paperVars()}">
+    <div class="hd">${s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.name)}">` : `<div class="bigname">${esc(s.name)}</div>`}
+      <div class="co">${s.logo ? `<b>${esc(s.name)}</b>` : ''}${esc(s.address).split('\n').join('<br>')}${s.phone ? '<br>Ph: ' + esc(s.phone) : ''}</div></div>
+    <div class="ttl" id="m_ttl">${esc(s.menuTitle || 'Menu')}</div>
+    ${list.length ? `<div class="mlist${two ? ' two' : ''}">${list.map(it => `<div class="mi"><div class="nm">${esc(it.name)}${it.details && colOn('details') ? `<small>${esc(it.details)}</small>` : ''}</div><div class="pr">₹ ${num(it.rate)}${it.unit ? `<small> / ${esc(it.unit)}</small>` : ''}</div></div>`).join('')}</div>` : '<p style="text-align:center;color:#777">No items yet. Add items first.</p>'}
+    <div class="thanks">${list.length} items · Rates in ₹, GST extra as applicable · ${fmtDate(today())}</div>
+  </div>`;
+  fitPaper();
+  const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
+  document.getElementById('print').onclick = () => { fitPaper(); window.print(); };
+  document.getElementById('m_title').oninput = e => { document.getElementById('m_ttl').textContent = e.target.value.trim() || 'Menu'; };
+  document.getElementById('m_title').onchange = async e => { s.menuTitle = e.target.value.trim() || 'Menu'; await save(); };
 }
 
 // ---------- settings ----------

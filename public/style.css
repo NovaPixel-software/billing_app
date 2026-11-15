@@ -589,3 +589,15 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 /* placeholder words fit inside the narrow table boxes */
 .lines2 td input::placeholder,.itemsT2 td input::placeholder,.custT2 td input::placeholder,.custT2 td textarea::placeholder{font-size:12.5px}
+
+/* items as a menu / price list */
+.paper.menu .ttl{text-transform:uppercase}
+.paper.menu .mlist.two{columns:2;column-gap:36px}
+.paper.menu .mi{display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px dotted #b9b9b9;break-inside:avoid;page-break-inside:avoid}
+.paper.menu .mi .nm{font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.paper.menu .mi .nm small{display:block;font-weight:400;font-size:11px;color:#666}
+.paper.menu .mi .pr{margin-left:auto;white-space:nowrap;font-weight:700;font-variant-numeric:tabular-nums}
+.paper.menu .mi .pr small{font-weight:400;color:#666;font-size:11px}
+.actions #m_title{flex:0 1 220px;min-height:40px}
+@media (max-width:640px){.paper.menu .mlist.two{columns:1}}
+body.measuring .paper.menu .mlist.two{columns:2}
