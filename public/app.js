@@ -601,31 +601,150 @@ async function downloadPdf(btn, name) {
   finally { p.style.width = ''; document.body.classList.remove('measuring'); btn.disabled = false; btn.textContent = label; }
 }
 
+// ---------- Word / Excel download of one invoice ----------
+const libs = {};
+const loadLib = src => libs[src] || (libs[src] = new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = () => { delete libs[src]; no(new Error('load')); }; document.head.appendChild(sc); }));
+const safeFile = name => name.replace(/[^\w .&()-]+/g, '-').trim();
+function saveBlob(blob, file) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+// totals block, shared by the screen / PDF, Word and Excel so they always agree
+// kind: '' = ₹ amount, 'neg' = minus amount, 'ro' = round off (+/−), 'grand' = whole rupees
+function totalRows(inv, c) {
+  const r = [['Sub-total', c.amount, '']];
+  if (c.invDisc) r.push([`Discount @ ${num(inv.discount)}%`, c.invDisc, 'neg', 'sm'], ['Taxable value', c.sub, '']);
+  c.rates.forEach(b => {
+    if (c.inter) r.push([`IGST @ ${num(b.rate)}%`, b.tax, '', 'sm']);
+    else r.push([`CGST @ ${num(b.rate / 2)}%`, b.tax / 2, '', 'sm'], [`SGST @ ${num(b.rate / 2)}%`, b.tax / 2, '', 'sm']);
+  });
+  r.push([c.rates.length === 1 ? `Total GST @ ${num(c.rates[0].rate)}%` : 'Total GST', c.gst, '']);
+  r.push(['Total inc. GST', c.total, ''], ['Round off', c.rounded - c.total, 'ro', 'sm'], ['INVOICE TOTAL', c.rounded, 'grand', 'grand']);
+  return r.map(([label, value, kind, cls]) => ({ label, value, kind, cls: cls || '' }));
+}
+const fmtTotal = t => t.kind === 'neg' ? '− ₹ ' + money(t.value) : t.kind === 'ro' ? `${t.value >= 0 ? '+' : '−'} ${money(Math.abs(t.value))}` : t.kind === 'grand' ? '₹ ' + money0(t.value) : '₹ ' + money(t.value);
+// which optional columns this invoice uses (same rule as the printed invoice)
+const invCols = (inv, c) => ({ LD: invDates(inv), H: inv.lines.some(l => l.hsn), U: inv.lines.some(l => l.unit), D: inv.lines.some(l => +l.disc), G: c.mixed || inv.lines.some(hasOwnGst) });
+const r2 = n => Math.round((+n || 0) * 100) / 100;
+
+async function downloadExcel(btn, name, inv) {
+  if (btn.disabled) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    await loadLib('vendor/xlsx.full.min.js');
+    const c = calc(inv), k = invCols(inv, c), X = window.XLSX;
+    const head = ['S.No', ...(k.LD ? ['Date'] : []), 'Item', ...(k.H ? ['HSN/SAC'] : []), 'Qty', ...(k.U ? ['Unit'] : []), 'Rate (₹)', ...(k.D ? ['Disc %'] : []), ...(k.G ? ['GST %'] : []), 'Amount (₹)'];
+    // the list of items (header row + one row per item), then the totals block under the Amount column
+    const rows = [head, ...inv.lines.map((l, i) => {
+      const lc = lineCalc(inv, l);
+      return [i + 1, ...(k.LD ? [fmtDate(l.date)] : []), l.item, ...(k.H ? [l.hsn || ''] : []), +l.count || 0, ...(k.U ? [l.unit || ''] : []), r2(l.cost), ...(k.D ? [+l.disc || ''] : []), ...(k.G ? [lc.rate] : []), r2(lc.amount)];
+    })];
+    const nItems = rows.length - 1, last = head.length - 1, rate = head.indexOf('Rate (₹)');
+    rows.push([]);
+    const tots = totalRows(inv, c).map(t => { const r = Array(head.length).fill(''); r[last - 1] = t.label; r[last] = t.kind === 'grand' ? t.value : r2(t.value); rows.push(r); return [rows.length - 1, t]; });
+    const ws = X.utils.aoa_to_sheet(rows), cell = (r, col) => ws[X.utils.encode_cell({ r, c: col })];
+    for (let r = 1; r <= nItems; r++) [rate, last].forEach(col => { const x = cell(r, col); if (x && x.t === 'n') x.z = '#,##0.00'; });
+    // same look as the bill: ₹ amounts, "+ 0.25" round off, whole-rupee invoice total
+    tots.forEach(([r, t]) => { const x = cell(r, last); if (x) x.z = t.kind === 'ro' ? '"+ "0.00;"− "0.00;0.00' : t.kind === 'grand' ? '"₹ "#,##0' : t.kind === 'neg' ? '"− ₹ "#,##0.00' : '"₹ "#,##0.00'; });
+    ws['!cols'] = head.map(h => ({ wch: h === 'Item' ? 34 : h === 'Amount (₹)' ? 16 : h === 'Rate (₹)' ? 12 : h === 'S.No' ? 6 : 11 }));
+    // the label column may be narrow (e.g. GST %), so widen it to fit "Total GST @ 5%" / "INVOICE TOTAL"
+    ws['!cols'][last - 1] = { wch: Math.max(ws['!cols'][last - 1].wch, 16) };
+    ws['!autofilter'] = { ref: X.utils.encode_range({ r: 0, c: 0 }, { r: nItems, c: last }) };
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Items');
+    saveBlob(new Blob([X.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), safeFile(name) + '.xlsx');
+  } catch (e) { console.error('xlsx', e); alert('Could not make the Excel file. Please try again.'); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+
+async function downloadWord(btn, name, inv) {
+  if (btn.disabled) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing…';
+  try {
+    await loadLib('vendor/docx.umd.js');
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType, ImageRun, VerticalAlign } = window.docx;
+    const s = db.settings, c = calc(inv), k = invCols(inv, c);
+    const accent = mix(themeColor(), '#000000', 0.3).slice(1), tint = mix(themeColor(), '#ffffff', 0.9).slice(1), grey = '777777';
+    const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }, noB = { top: none, bottom: none, left: none, right: none, insideHorizontal: none, insideVertical: none };
+    const line = { style: BorderStyle.SINGLE, size: 4, color: 'D9D9D9' }, gridB = { top: line, bottom: line, left: line, right: line, insideHorizontal: line, insideVertical: line };
+    const T = (text, o = {}) => new TextRun({ text: String(text ?? ''), size: o.size || 19, bold: !!o.bold, color: o.color, font: 'Calibri' });
+    const P = (runs, o = {}) => new Paragraph({ children: Array.isArray(runs) ? runs : [runs], alignment: o.align, spacing: { before: o.before || 0, after: o.after ?? 40 } });
+    const lines = (txt, o) => String(txt || '').split('\n').filter(Boolean).map(l => P(T(l, o), { align: o && o.align }));
+    const cellOf = (children, o = {}) => new TableCell({ children: children.length ? children : [P(T(''))], width: o.w ? { size: o.w, type: WidthType.PERCENTAGE } : undefined, shading: o.fill ? { fill: o.fill, type: ShadingType.CLEAR, color: 'auto' } : undefined, verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60, left: 100, right: 100 } });
+    const out = [];
+
+    // header: logo (or big name) on the left, company details on the right
+    let left = [P(T(s.name, { size: 34, bold: true, color: accent }))];
+    if (s.logo) {
+      try {
+        const buf = await (await fetch(s.logo)).arrayBuffer();
+        const img = await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = s.logo; });
+        const h = 60, w = Math.min(220, Math.round(img.naturalWidth * h / img.naturalHeight));
+        left = [P(new ImageRun({ data: buf, transformation: { width: w, height: Math.round(w * img.naturalHeight / img.naturalWidth) } }))];
+      } catch { /* no logo: keep the name */ }
+    }
+    const co = [...(s.logo ? [P(T(s.name, { bold: true, size: 22 }), { align: AlignmentType.RIGHT })] : []), ...lines(s.address, { align: AlignmentType.RIGHT })];
+    if (s.phone) co.push(P(T('Ph: ' + s.phone), { align: AlignmentType.RIGHT }));
+    if (s.gst || s.pan) co.push(P(T([s.gst && 'GSTIN: ' + s.gst, s.pan && 'PAN: ' + s.pan].filter(Boolean).join('  |  ')), { align: AlignmentType.RIGHT }));
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noB, rows: [new TableRow({ children: [cellOf(left, { w: 45 }), cellOf(co, { w: 55 })] })] }));
+    out.push(P(T('TAX INVOICE', { size: 30, bold: true, color: accent }), { align: AlignmentType.CENTER, before: 200, after: 160 }));
+
+    // invoice no / date / due
+    const meta = [['Invoice No.', inv.no], ['Invoice Date', fmtDate(inv.date)], ['Payment Due', fmtDate(dueOf(inv))]];
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: gridB, rows: [new TableRow({ children: meta.map(([a, b]) => cellOf([P(T(a, { size: 16, color: grey })), P(T(b, { bold: true }))], { w: 33, fill: tint })) })] }));
+    out.push(P(T(''), { after: 80 }));
+
+    // bill to / ship to
+    const party = (title, p) => [P(T(title.toUpperCase(), { size: 16, bold: true, color: grey })), P(T(p.name, { bold: true, size: 21 })), ...lines(p.address), ...(p.gst ? [P([T('GST: '), T(p.gst, { bold: true })])] : [])];
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: gridB, rows: [new TableRow({ children: [cellOf(party('Bill To', inv.billTo), { w: 50 }), cellOf(party('Ship To', inv.shipTo), { w: 50 })] })] }));
+    out.push(P(T(''), { after: 80 }));
+
+    // items
+    const cols = [['S.No', 7, 'c'], ...(k.LD ? [['Date', 11, '']] : []), ['Item', 0, ''], ...(k.H ? [['HSN/SAC', 11, '']] : []), ['Qty', 11, 'r'], ['Rate (₹)', 12, 'r'], ...(k.D ? [['Disc %', 8, 'r']] : []), ...(k.G ? [['GST %', 8, 'r']] : []), ['Amount (₹)', 15, 'r']];
+    const fixed = cols.reduce((a, x) => a + x[1], 0); cols.find(x => x[0] === 'Item')[1] = Math.max(20, 100 - fixed);
+    const al = a => a === 'r' ? AlignmentType.RIGHT : a === 'c' ? AlignmentType.CENTER : AlignmentType.LEFT;
+    const headRow = new TableRow({ tableHeader: true, children: cols.map(([h, w, a]) => cellOf([P(T(h, { bold: true, color: 'FFFFFF', size: 18 }), { align: al(a) })], { w, fill: accent })) });
+    const body = inv.lines.map((l, i) => {
+      const lc = lineCalc(inv, l);
+      const v = [String(i + 1), ...(k.LD ? [fmtDate(l.date)] : []), l.item, ...(k.H ? [l.hsn || ''] : []), num(l.count) + (l.unit ? ' ' + l.unit : ''), money(l.cost), ...(k.D ? [+l.disc ? num(l.disc) + '%' : ''] : []), ...(k.G ? [num(lc.rate) + '%'] : []), money(lc.amount)];
+      return new TableRow({ cantSplit: true, children: v.map((x, j) => cellOf([P(T(x), { align: al(cols[j][2]) })], { w: cols[j][1], fill: i % 2 ? tint : undefined })) });
+    });
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: gridB, rows: [headRow, ...body] }));
+    out.push(P(T(''), { after: 80 }));
+
+    // amount in words + bank on the left, totals on the right
+    const lab = t => P(T(t.toUpperCase(), { size: 15, bold: true, color: grey }), { before: 60 });
+    const leftLow = [lab('Amount in words'), P(T(rupeesInWords(c.rounded), { bold: true }), { after: 120 }), lab('Bank details'),
+      ...[['Account name', s.accountName], ['Account no.', s.bankAccount], ['IFSC', s.ifsc], ['Bank', s.bankName]].map(([a, b]) => P([T(a + ':  ', { color: grey }), T(b, { bold: true })])),
+      ...(s.terms ? [P([T('Terms & conditions: ', { bold: true }), T(s.terms)], { before: 120 })] : [])];
+    const totTable = new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noB, rows: totalRows(inv, c).map(t => {
+      const g = t.kind === 'grand', o = { bold: g || !t.cls, size: g ? 22 : t.cls ? 17 : 19, color: g ? 'FFFFFF' : t.cls ? '555555' : undefined };
+      return new TableRow({ children: [cellOf([P(T(t.label, o))], { w: 55, fill: g ? accent : undefined }), cellOf([P(T(fmtTotal(t), o), { align: AlignmentType.RIGHT })], { w: 45, fill: g ? accent : undefined })] });
+    }) });
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, borders: noB, rows: [new TableRow({ cantSplit: true, children: [cellOf(leftLow, { w: 55 }), cellOf([totTable], { w: 45 })] })] }));
+    out.push(P(T('Thank you for your business!', { bold: true, color: accent }), { align: AlignmentType.CENTER, before: 300 }));
+    out.push(P(T('This is a computer-generated invoice and does not require a signature or seal.', { size: 15, color: grey }), { align: AlignmentType.CENTER }));
+
+    const doc = new Document({ creator: s.name, title: 'Invoice ' + inv.no, sections: [{ properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 680, bottom: 680, left: 680, right: 680 } } }, children: out }] });
+    saveBlob(await Packer.toBlob(doc), safeFile(name) + '.docx');
+  } catch (e) { console.error('docx', e); alert('Could not make the Word file. Please try again.'); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+
 function viewInvoice(id) {
   const inv = db.invoices.find(i => i.id === id);
   if (!inv) { location.hash = '#/invoices'; return; }
   const s = db.settings, c = calc(inv), n = inv.lines.length;
   const due = dueOf(inv);
-  const roundOff = c.rounded - c.total;
   // optional columns are printed only when this invoice actually uses them
   const LD = invDates(inv), H = inv.lines.some(l => l.hsn), D = inv.lines.some(l => +l.disc), G = c.mixed || inv.lines.some(hasOwnGst);
   const dens = n > 18 ? ' c2' : n > 12 ? ' c1' : ''; // tighter spacing as the invoice gets longer
   const party = (t, p) => `<div class="box"><span class="k">${t}</span><b class="nm">${esc(p.name)}</b>${esc(p.address)}${p.gst ? '\nGST: <b>' + esc(p.gst) + '</b>' : ''}</div>`;
   const lbl = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#777;font-weight:600;display:block';
   const tr = (a, b, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${a}</td><td>${b}</td></tr>`;
-  let tot = tr('Sub-total', '₹ ' + money(c.amount));
-  if (c.invDisc) tot += tr(`Discount @ ${num(inv.discount)}%`, '− ₹ ' + money(c.invDisc), 'sm') + tr('Taxable value', '₹ ' + money(c.sub));
-  c.rates.forEach(b => {
-    if (c.inter) tot += tr(`IGST @ ${num(b.rate)}%`, '₹ ' + money(b.tax), 'sm');
-    else tot += tr(`CGST @ ${num(b.rate / 2)}%`, '₹ ' + money(b.tax / 2), 'sm') + tr(`SGST @ ${num(b.rate / 2)}%`, '₹ ' + money(b.tax / 2), 'sm');
-  });
-  tot += tr(c.rates.length === 1 ? `Total GST @ ${num(c.rates[0].rate)}%` : 'Total GST', '₹ ' + money(c.gst));
-  tot += tr('Total inc. GST', '₹ ' + money(c.total));
-  tot += tr('Round off', `${roundOff >= 0 ? '+' : '−'} ${money(Math.abs(roundOff))}`, 'sm');
-  tot += tr('INVOICE TOTAL', '₹ ' + money0(c.rounded), 'grand');
+  const tot = totalRows(inv, c).map(t => tr(t.label, fmtTotal(t), t.cls)).join('');
   $app.innerHTML = `
   <div class="actions no-print">
-    <button class="btn primary" id="dl">Download PDF</button>
+    <button class="btn primary" id="dl" aria-haspopup="true">Download ▾</button>
     <button class="btn" id="print">Print</button>
     <a class="btn" href="#/edit/${inv.id}">Edit</a>
     <button class="btn" id="pay">${inv.status === 'paid' ? 'Mark unpaid' : 'Mark as paid'}</button>
@@ -656,8 +775,22 @@ function viewInvoice(id) {
   </div>`;
   fitPaper();
   const li = document.querySelector('.paper .hd img'); if (li && !li.complete) li.addEventListener('load', fitPaper, { once: true });
-  document.getElementById('print').onclick = () => { fitPaper(); window.print(); };
-  document.getElementById('dl').onclick = e => downloadPdf(e.currentTarget, 'Invoice ' + inv.no);
+  // file name: "Customer_Name_DDMonYYYY" (billing date), no spaces
+  const [fy, fm, fd] = inv.date.split('-');
+  const fileName = `${(inv.billTo.name || 'Invoice').trim().replace(/\s+/g, '_')}_${fd}${MON[+fm - 1]}${fy}`;
+  document.getElementById('print').onclick = () => {
+    // "Save as PDF" in the print dialog takes its file name from the page title
+    const t = document.title; document.title = fileName; fitPaper(); window.print(); document.title = t;
+  };
+  document.getElementById('dl').onclick = e => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    openMenu(btn, [{ v: 'pdf', t: 'PDF', s: 'Same as the printed bill' }, { v: 'docx', t: 'Word (.docx)', s: 'Editable document' }, { v: 'xlsx', t: 'Excel (.xlsx)', s: 'Items and totals in cells' }], '', v => {
+      if (v === 'pdf') downloadPdf(btn, fileName);
+      else if (v === 'docx') downloadWord(btn, fileName, inv);
+      else downloadExcel(btn, fileName, inv);
+    });
+  };
   document.getElementById('pay').onclick = async () => {
     if (inv.status === 'paid') { inv.status = 'unpaid'; inv.paidDate = ''; }
     else { inv.status = 'paid'; inv.paidDate = prompt('Payment date (YYYY-MM-DD)', today()) || today(); }
